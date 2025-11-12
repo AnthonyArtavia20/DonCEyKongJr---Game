@@ -15,7 +15,7 @@ SRC_DIR = src
 OBJ_DIR = obj
 BIN_DIR = bin
 
-# Archivos fuente y objeto
+# Archivos fuente y objeto - asegúrate de que encuentra todos los .c
 SOURCES = $(wildcard $(SRC_DIR)/*.c)
 OBJECTS = $(SOURCES:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
 
@@ -48,8 +48,8 @@ rebuild: clean all
 # Verificar configuración
 check:
 	@echo "=== Verificando configuracion ==="
-	@where gcc
-	@where make
+	@echo "SOURCES: $(SOURCES)"
+	@echo "OBJECTS: $(OBJECTS)"
 	@echo "RAYLIB_PATH: $(RAYLIB_PATH)"
 
 .PHONY: all clean rebuild check
