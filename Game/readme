@@ -1,0 +1,8 @@
+# Compilar cambios
+make
+
+# Limpiar y recompilar
+make rebuild
+
+# Ejecutar
+./bin/mi_juego.exe
