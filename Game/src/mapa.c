@@ -189,46 +189,147 @@ void CrearMapaEjemplo(Mapa *mapa) {
     
     // Crear suelo en la parte inferior (solo si el mapa tiene al menos 2 filas)
     if (mapa->alto >= 2) {
-        for (int x = 0; x < mapa->ancho; x++) {
-            SetTile(mapa, x, mapa->alto - 1, tile_suelo);
-            SetTile(mapa, x, mapa->alto - 2, tile_suelo);
+        for (int x = 0; x < mapa->ancho - 50; x++) {
+            SetTile(mapa, x, mapa->alto - 4, tile_suelo);
+        }
+
+        for (int x = 26; x < mapa->ancho - 35; x++) {
+            SetTile(mapa, x, mapa->alto - 7, tile_suelo);
+        }
+
+        for (int x = 37; x < mapa->ancho - 26; x++) {
+            SetTile(mapa, x, mapa->alto - 6, tile_suelo);
+        }
+
+        for (int x = 46; x < mapa->ancho - 15; x++) {
+            SetTile(mapa, x, mapa->alto - 7, tile_suelo);
+        }
+
+        for (int x = 57; x < mapa->ancho - 4; x++) {
+            SetTile(mapa, x, mapa->alto - 9, tile_suelo);
         }
     }
     
     // Agregar algunas plataformas (solo si hay espacio)
     if (mapa->ancho >= 10 && mapa->alto >= 5) {
-        for (int x = 5; x < 10 && x < mapa->ancho; x++) {
-            SetTile(mapa, x, mapa->alto - 5, tile_suelo);
+        for (int x = 13; x < 27 && x < mapa->ancho; x++) { //Plataforma mas izquierda abajo
+            SetTile(mapa, x, mapa->alto - 17, tile_suelo);
         }
-    }
-    
-    if (mapa->ancho >= 20 && mapa->alto >= 8) {
-        for (int x = 15; x < 20 && x < mapa->ancho; x++) {
-            SetTile(mapa, x, mapa->alto - 8, tile_suelo);
+
+        for (int x = 13; x < 27 && x < mapa->ancho; x++) {
+            SetTile(mapa, x, mapa->alto - 16, tile_suelo);
+        }
+
+        for (int x = 13; x < 22 && x < mapa->ancho; x++) { //Plataforma mas izquierda arriba
+            SetTile(mapa, x, mapa->alto - 25, tile_suelo);
+        }
+
+        for (int x = 13; x < 22 && x < mapa->ancho; x++) {
+            SetTile(mapa, x, mapa->alto - 24, tile_suelo);
+        }
+
+        for (int x = 0; x < 42 && x < mapa->ancho; x++) { //Techo
+            SetTile(mapa, x, mapa->alto - 34, tile_suelo);
+        }
+
+        for (int x = 0; x < 42 && x < mapa->ancho; x++) {
+            SetTile(mapa, x, mapa->alto - 33, tile_suelo);
+        }
+
+        for (int x = 40; x < 57 && x < mapa->ancho; x++) {
+            SetTile(mapa, x, mapa->alto - 32, tile_suelo);
+        }
+
+        for (int x = 52; x < mapa->ancho; x++) { //Plataforma mas de la derecha
+            SetTile(mapa, x, mapa->alto - 20, tile_suelo);
+        }
+
+        for (int x = 52; x < mapa->ancho; x++) { 
+            SetTile(mapa, x, mapa->alto - 19, tile_suelo);
         }
     }
     
     // Agregar lianas (solo si hay espacio)
+    //de izquierda a derecha
     if (mapa->ancho >= 9 && mapa->alto >= 7) {
-        SetTile(mapa, 8, mapa->alto - 6, tile_liana);
-        SetTile(mapa, 8, mapa->alto - 7, tile_liana);
+
+
+
+        for (int y = mapa->alto - 32; y <= mapa->alto - 8; y++) { // Liana 1
+        SetTile(mapa, 5, y, tile_liana);} 
+        
+        for (int y = mapa->alto - 32; y <= mapa->alto - 10; y++) { // Liana 2
+        SetTile(mapa, 12, y, tile_liana);}
+
+        for (int y = mapa->alto - 15; y <= mapa->alto - 8; y++) { // Liana 3 (abajo de plataforma)
+        SetTile(mapa, 18, y, tile_liana);}
+
+        for (int y = mapa->alto - 23; y <= mapa->alto - 18; y++) { // Liana 4 (arriba de plataforma)
+        SetTile(mapa, 18, y, tile_liana);}
+
+
+        for (int y = mapa->alto - 32; y <= mapa->alto - 13; y++) { // Liana 5
+        SetTile(mapa, 29, y, tile_liana);}
+
+
+        for (int y = mapa->alto - 32; y <= mapa->alto - 19; y++) { // Liana 6
+        SetTile(mapa, 38, y, tile_liana);}
+
+
+        for (int y = mapa->alto - 31; y <= mapa->alto - 13; y++) { // Liana 7
+        SetTile(mapa, 44, y, tile_liana);}
+
+
+        for (int y = mapa->alto - 31; y <= mapa->alto - 16; y++) { // Liana 8
+        SetTile(mapa, 51, y, tile_liana);}
+ 
+
+        for (int y = mapa->alto - 18; y <= mapa->alto - 13; y++) { // Liana 9 (abajo de plataforma izq)
+        SetTile(mapa, 57, y, tile_liana);}
+
+        for (int y = mapa->alto - 18; y <= mapa->alto - 13; y++) { // Liana 10 (abajo de plataforma der)
+        SetTile(mapa, 64, y, tile_liana);}
+
+
+        for (int y = mapa->alto - 37; y <= mapa->alto - 21; y++) { // Liana 11 (arriba plataforma der)
+        SetTile(mapa, 57, y, tile_liana);}
+
+
+        for (int y = mapa->alto - 37; y <= mapa->alto - 21; y++) { // Liana 12 (arriba plataforma izq)
+        SetTile(mapa, 64, y, tile_liana);}
+
     }
     
-    if (mapa->ancho >= 19 && mapa->alto >= 11) {
-        SetTile(mapa, 18, mapa->alto - 9, tile_liana);
-        SetTile(mapa, 18, mapa->alto - 10, tile_liana);
-    }
     
     // Agregar zona de peligro
     if (mapa->ancho >= 14 && mapa->alto >= 2) {
-        for (int x = 12; x < 14 && x < mapa->ancho; x++) {
+        for (int x = 0; x < mapa->ancho; x++) {
             SetTile(mapa, x, mapa->alto - 1, tile_peligro);
+        }
+
+        for (int x = 0; x < mapa->ancho; x++) {
+            SetTile(mapa, x, mapa->alto - 2, tile_peligro);
+        }
+
+        for (int x = 0; x < 22 && x < mapa->ancho; x++) {
+            SetTile(mapa, x, mapa->alto - 35, tile_peligro);
+        }
+
+        for (int x = 0; x < 22 && x < mapa->ancho; x++) {
+            SetTile(mapa, x, mapa->alto - 36, tile_peligro);
+        }
+
+        for (int x = 0; x < 22 && x < mapa->ancho; x++) {
+            SetTile(mapa, x, mapa->alto - 37, tile_peligro);
         }
     }
     
     // Meta (solo si hay espacio)
     if (mapa->ancho >= 3 && mapa->alto >= 3) {
-        SetTile(mapa, mapa->ancho - 2, mapa->alto - 2, tile_meta);
+        SetTile(mapa, mapa->ancho - 20, mapa->alto - 35, tile_meta);
+        SetTile(mapa, mapa->ancho - 21, mapa->alto - 35, tile_meta);
+        SetTile(mapa, mapa->ancho - 20, mapa->alto - 34, tile_meta);
+        SetTile(mapa, mapa->ancho - 21, mapa->alto - 34, tile_meta);
     }
     
     TraceLog(LOG_INFO, "Mapa de ejemplo creado exitosamente");
