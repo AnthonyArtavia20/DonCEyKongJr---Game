@@ -1,4 +1,4 @@
-package GameServer.Core;
+package GameServer.CoreGenericServer;
 
 /**
  * Configuración simple del servidor con valores por defecto.

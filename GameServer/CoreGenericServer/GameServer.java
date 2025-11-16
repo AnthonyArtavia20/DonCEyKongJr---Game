@@ -1,4 +1,4 @@
-package GameServer.Core;
+package GameServer.CoreGenericServer;
 //Networking
 import java.net.*;
 import java.io.*;

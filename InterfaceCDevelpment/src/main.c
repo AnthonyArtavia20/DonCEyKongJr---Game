@@ -29,7 +29,7 @@ int main(void) {
     printf("Mapa creado exitosamente\n");
     
     // Cargar fondo
-    CargarFondo(mapa, "assets/fondo.png");
+    CargarFondo(mapa, "assets/Fondo.png");
     printf("Fondo cargado\n");
     
     // Crear mapa de ejemplo

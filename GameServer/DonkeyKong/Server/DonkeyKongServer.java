@@ -1,6 +1,6 @@
 package GameServer.DonkeyKong.Server;
 
-import GameServer.Core.*;
+import GameServer.CoreGenericServer.*;
 import GameServer.DonkeyKong.Game.GameLogic;
 import java.io.IOException;
 import java.net.Socket;

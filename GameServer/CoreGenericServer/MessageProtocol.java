@@ -1,4 +1,4 @@
-package GameServer.Core;
+package GameServer.CoreGenericServer;
 
 /**
  * Protocolo mejorado que soporta múltiples parámetros
