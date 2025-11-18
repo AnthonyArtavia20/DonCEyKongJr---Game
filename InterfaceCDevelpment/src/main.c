@@ -39,25 +39,56 @@ int main(void) {
     printf("Mapa ejemplo creado\n");
     
     // --- VARIABLES DEL CUADRADO AZUL ---
-    Vector2 cuadradoPos = {50, ALTO_PANTALLA - 100};
+    Vector2 cuadradoPos = {50, 100};
     int cuadradoSize = 50;
     float velocidad = 5.0f;
+    bool enSuelo = false;
+    float velocidadY = 0.0f;      // Nueva: velocidad vertical
+    const float gravedad = 0.5f;  // Nueva: fuerza de gravedad
+    const float fuerzaSalto = -12.0f; // Nueva: fuerza del salto (negativo porque Y va hacia abajo)
     
     printf("=== INICIANDO BUCLE ===\n");
     
     // Bucle principal
     while (!WindowShouldClose()) {
-        // --- MOVIMIENTO CON FLECHAS ---
+        // --- MOVIMIENTO HORIZONTAL CON FLECHAS ---
         if (IsKeyDown(KEY_RIGHT)) cuadradoPos.x += velocidad;
         if (IsKeyDown(KEY_LEFT)) cuadradoPos.x -= velocidad;
-        if (IsKeyDown(KEY_UP)) cuadradoPos.y -= velocidad;
-        if (IsKeyDown(KEY_DOWN)) cuadradoPos.y += velocidad;
+        
+        // --- SALTO CON ESPACIO ---
+        if (enSuelo && IsKeyPressed(KEY_SPACE)) {
+            velocidadY = fuerzaSalto;
+            enSuelo = false;
+        }
+        
+        // --- APLICAR GRAVEDAD ---
+        velocidadY += gravedad;
+        cuadradoPos.y += velocidadY;
+        
+        // --- DETECCIÓN DE SUELO ---
+        enSuelo = HayTileDebajo(mapa, cuadradoPos.x, cuadradoPos.y, cuadradoSize, cuadradoSize);
+        
+        // Si detectamos suelo, colocar el cuadrado justo encima y resetear velocidad
+        if (enSuelo && velocidadY > 0) {
+            // Calcular la posición exacta encima del tile
+            int tileY = (int)((cuadradoPos.y + cuadradoSize) / mapa->tileSize);
+            cuadradoPos.y = tileY * mapa->tileSize - cuadradoSize;
+            velocidadY = 0;
+            enSuelo = true;
+        }
         
         // Limites de pantalla
         if (cuadradoPos.x < 0) cuadradoPos.x = 0;
         if (cuadradoPos.x > ANCHO_PANTALLA - cuadradoSize) cuadradoPos.x = ANCHO_PANTALLA - cuadradoSize;
-        if (cuadradoPos.y < 0) cuadradoPos.y = 0;
-        if (cuadradoPos.y > ALTO_PANTALLA - cuadradoSize) cuadradoPos.y = ALTO_PANTALLA - cuadradoSize;
+        if (cuadradoPos.y < 0) {
+            cuadradoPos.y = 0;
+            velocidadY = 0;
+        }
+        if (cuadradoPos.y > ALTO_PANTALLA - cuadradoSize) {
+            cuadradoPos.y = ALTO_PANTALLA - cuadradoSize;
+            enSuelo = true;
+            velocidadY = 0;
+        }
         
         // --- DIBUJADO ---
         BeginDrawing();
@@ -68,12 +99,15 @@ int main(void) {
             
             // Dibujar cuadrado azul movible
             DrawRectangle(cuadradoPos.x, cuadradoPos.y, cuadradoSize, cuadradoSize, BLUE);
+            DrawRectangleLines(cuadradoPos.x, cuadradoPos.y, cuadradoSize, cuadradoSize, YELLOW);
             
             // UI de debug
             DrawText("DEBUG - DON CEY KONG JR", 10, 10, 20, YELLOW);
             DrawText(TextFormat("Posicion: (%.0f, %.0f)", cuadradoPos.x, cuadradoPos.y), 10, 35, 15, GREEN);
-            DrawText("Flechas para mover el cuadrado azul", 10, 55, 15, RED);
-            DrawText("Presiona ESC para salir", 10, ALTO_PANTALLA - 25, 15, BLACK);
+            DrawText(TextFormat("En suelo: %s", enSuelo ? "SI" : "NO"), 10, 55, 15, enSuelo ? GREEN : RED);
+            DrawText(TextFormat("Velocidad Y: %.1f", velocidadY), 10, 75, 15, BLUE);
+            DrawText("Flechas: mover | ESPACIO: saltar", 10, 95, 15, RED);
+            DrawText("Presiona ESC para salir", 10, ALTO_PANTALLA - 25, 15, WHITE);
             
         EndDrawing();
     }
@@ -82,4 +116,4 @@ int main(void) {
     CloseWindow();
     printf("=== JUEGO TERMINADO ===\n");
     return 0;
-}
+} // main

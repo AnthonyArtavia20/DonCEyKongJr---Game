@@ -334,3 +334,20 @@ void CrearMapaEjemplo(Mapa *mapa) {
     
     TraceLog(LOG_INFO, "Mapa de ejemplo creado exitosamente");
 }
+
+// Verificar colisión con tiles sólidos
+int HayTileDebajo(Mapa *mapa, float x, float y, int ancho, int alto) {
+    if (!mapa) return 0;
+    
+    // Convertir posición del jugador a coordenadas de tile
+    int tileX = (int)(x / mapa->tileSize);
+    int tileY = (int)((y + alto) / mapa->tileSize); // Debajo del jugador
+    
+    // Verificar si la posición es válida y el tile es sólido
+    if (tileX >= 0 && tileX < mapa->ancho && tileY >= 0 && tileY < mapa->alto) {
+        int tile = GetTile(mapa, tileX, tileY);
+        return (tile == tile_suelo || tile == tile_meta); // Tiles sólidos
+    }
+    
+    return 0;
+}
