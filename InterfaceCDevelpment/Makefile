@@ -31,6 +31,9 @@ $(BIN_DIR):
 $(OBJ_DIR):
 	@mkdir -p $(OBJ_DIR)
 
+# Agregar ws2_32 para Winsock
+LDLIBS = $(if $(PKG_LIBS),$(PKG_LIBS),-lraylib -lopengl32 -lgdi32 -lwinmm -lws2_32 -mwindows)
+
 # Limpiar archivos compilados
 clean:
 	rm -rf $(OBJ_DIR) $(BIN_DIR)
