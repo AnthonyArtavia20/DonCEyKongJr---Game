@@ -36,5 +36,6 @@ void CrearMapaEjemplo(Mapa *mapa);
 
 int HayTileDebajo(Mapa *mapa, float x, float y, int ancho, int alto);
 int HayAguaDebajo(Mapa *mapa, float x, float y, int ancho, int alto);
+int HayLiana(Mapa *mapa, float x, float y, int ancho, int alto);
 
 #endif

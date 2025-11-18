@@ -187,144 +187,136 @@ void CrearMapaEjemplo(Mapa *mapa) {
         }
     }
     
-    // Crear suelo en la parte inferior (solo si el mapa tiene al menos 2 filas)
+    // Crear suelo principal en la parte inferior (2 tiles de grosor)
     if (mapa->alto >= 2) {
         for (int x = 0; x < mapa->ancho - 50; x++) {
             SetTile(mapa, x, mapa->alto - 4, tile_suelo);
-        }
-
-        for (int x = 26; x < mapa->ancho - 35; x++) {
-            SetTile(mapa, x, mapa->alto - 7, tile_suelo);
-        }
-
-        for (int x = 37; x < mapa->ancho - 26; x++) {
-            SetTile(mapa, x, mapa->alto - 6, tile_suelo);
-        }
-
-        for (int x = 46; x < mapa->ancho - 15; x++) {
-            SetTile(mapa, x, mapa->alto - 7, tile_suelo);
-        }
-
-        for (int x = 57; x < mapa->ancho - 4; x++) {
-            SetTile(mapa, x, mapa->alto - 9, tile_suelo);
+            SetTile(mapa, x, mapa->alto - 3, tile_suelo);
         }
     }
     
-    // Agregar algunas plataformas (solo si hay espacio)
+    // Agregar plataformas (TODAS con 2 tiles de grosor)
     if (mapa->ancho >= 10 && mapa->alto >= 5) {
-        for (int x = 13; x < 27 && x < mapa->ancho; x++) { //Plataforma mas izquierda abajo
-            SetTile(mapa, x, mapa->alto - 17, tile_suelo);
-        }
-
+        // Plataforma 1 (izquierda abajo)
         for (int x = 13; x < 27 && x < mapa->ancho; x++) {
+            SetTile(mapa, x, mapa->alto - 17, tile_suelo);
             SetTile(mapa, x, mapa->alto - 16, tile_suelo);
         }
 
-        for (int x = 13; x < 22 && x < mapa->ancho; x++) { //Plataforma mas izquierda arriba
-            SetTile(mapa, x, mapa->alto - 25, tile_suelo);
-        }
-
+        // Plataforma 2 (izquierda arriba)
         for (int x = 13; x < 22 && x < mapa->ancho; x++) {
+            SetTile(mapa, x, mapa->alto - 25, tile_suelo);
             SetTile(mapa, x, mapa->alto - 24, tile_suelo);
         }
 
-        for (int x = 0; x < 42 && x < mapa->ancho; x++) { //Techo
-            SetTile(mapa, x, mapa->alto - 34, tile_suelo);
+        // Plataforma 3 (centro)
+        for (int x = 26; x < mapa->ancho - 35 && x < mapa->ancho; x++) {
+            SetTile(mapa, x, mapa->alto - 7, tile_suelo);
+            SetTile(mapa, x, mapa->alto - 6, tile_suelo);
         }
 
+        // Plataforma 4 (centro)
+        for (int x = 37; x < mapa->ancho - 26 && x < mapa->ancho; x++) {
+            SetTile(mapa, x, mapa->alto - 6, tile_suelo);
+            SetTile(mapa, x, mapa->alto - 5, tile_suelo);
+        }
+
+        // Plataforma 5 (centro)
+        for (int x = 46; x < mapa->ancho - 15 && x < mapa->ancho; x++) {
+            SetTile(mapa, x, mapa->alto - 7, tile_suelo);
+            SetTile(mapa, x, mapa->alto - 6, tile_suelo);
+        }
+
+        // Plataforma 6 (derecha)
+        for (int x = 57; x < mapa->ancho - 4 && x < mapa->ancho; x++) {
+            SetTile(mapa, x, mapa->alto - 9, tile_suelo);
+            SetTile(mapa, x, mapa->alto - 8, tile_suelo);
+        }
+
+        // Techo (2 tiles de grosor)
         for (int x = 0; x < 42 && x < mapa->ancho; x++) {
+            SetTile(mapa, x, mapa->alto - 34, tile_suelo);
             SetTile(mapa, x, mapa->alto - 33, tile_suelo);
         }
 
+        // Plataforma techo derecha
         for (int x = 40; x < 57 && x < mapa->ancho; x++) {
             SetTile(mapa, x, mapa->alto - 32, tile_suelo);
+            SetTile(mapa, x, mapa->alto - 31, tile_suelo);
         }
 
-        for (int x = 52; x < mapa->ancho; x++) { //Plataforma mas de la derecha
+        // Plataforma derecha grande
+        for (int x = 52; x < mapa->ancho; x++) {
             SetTile(mapa, x, mapa->alto - 20, tile_suelo);
-        }
-
-        for (int x = 52; x < mapa->ancho; x++) { 
             SetTile(mapa, x, mapa->alto - 19, tile_suelo);
         }
     }
     
     // Agregar lianas (solo si hay espacio)
-    //de izquierda a derecha
     if (mapa->ancho >= 9 && mapa->alto >= 7) {
-
-
-
         for (int y = mapa->alto - 32; y <= mapa->alto - 8; y++) { // Liana 1
-        SetTile(mapa, 5, y, tile_liana);} 
+            SetTile(mapa, 5, y, tile_liana);
+        } 
         
         for (int y = mapa->alto - 32; y <= mapa->alto - 10; y++) { // Liana 2
-        SetTile(mapa, 12, y, tile_liana);}
+            SetTile(mapa, 12, y, tile_liana);
+        }
 
         for (int y = mapa->alto - 15; y <= mapa->alto - 8; y++) { // Liana 3 (abajo de plataforma)
-        SetTile(mapa, 18, y, tile_liana);}
+            SetTile(mapa, 18, y, tile_liana);
+        }
 
         for (int y = mapa->alto - 23; y <= mapa->alto - 18; y++) { // Liana 4 (arriba de plataforma)
-        SetTile(mapa, 18, y, tile_liana);}
-
+            SetTile(mapa, 18, y, tile_liana);
+        }
 
         for (int y = mapa->alto - 32; y <= mapa->alto - 13; y++) { // Liana 5
-        SetTile(mapa, 29, y, tile_liana);}
-
+            SetTile(mapa, 29, y, tile_liana);
+        }
 
         for (int y = mapa->alto - 32; y <= mapa->alto - 19; y++) { // Liana 6
-        SetTile(mapa, 38, y, tile_liana);}
-
+            SetTile(mapa, 38, y, tile_liana);
+        }
 
         for (int y = mapa->alto - 31; y <= mapa->alto - 13; y++) { // Liana 7
-        SetTile(mapa, 44, y, tile_liana);}
-
+            SetTile(mapa, 44, y, tile_liana);
+        }
 
         for (int y = mapa->alto - 31; y <= mapa->alto - 16; y++) { // Liana 8
-        SetTile(mapa, 51, y, tile_liana);}
- 
+            SetTile(mapa, 51, y, tile_liana);
+        }
 
         for (int y = mapa->alto - 18; y <= mapa->alto - 13; y++) { // Liana 9 (abajo de plataforma izq)
-        SetTile(mapa, 57, y, tile_liana);}
+            SetTile(mapa, 57, y, tile_liana);
+        }
 
         for (int y = mapa->alto - 18; y <= mapa->alto - 13; y++) { // Liana 10 (abajo de plataforma der)
-        SetTile(mapa, 64, y, tile_liana);}
-
+            SetTile(mapa, 64, y, tile_liana);
+        }
 
         for (int y = mapa->alto - 37; y <= mapa->alto - 21; y++) { // Liana 11 (arriba plataforma der)
-        SetTile(mapa, 57, y, tile_liana);}
-
+            SetTile(mapa, 57, y, tile_liana);
+        }
 
         for (int y = mapa->alto - 37; y <= mapa->alto - 21; y++) { // Liana 12 (arriba plataforma izq)
-        SetTile(mapa, 64, y, tile_liana);}
-
+            SetTile(mapa, 64, y, tile_liana);
+        }
     }
     
-    
-    // Agregar zona de peligro
+    // Agregar zona de peligro (2 tiles de grosor)
     if (mapa->ancho >= 14 && mapa->alto >= 2) {
         for (int x = 0; x < mapa->ancho; x++) {
             SetTile(mapa, x, mapa->alto - 1, tile_peligro);
-        }
-
-        for (int x = 0; x < mapa->ancho; x++) {
             SetTile(mapa, x, mapa->alto - 2, tile_peligro);
         }
 
         for (int x = 0; x < 22 && x < mapa->ancho; x++) {
             SetTile(mapa, x, mapa->alto - 35, tile_peligro);
-        }
-
-        for (int x = 0; x < 22 && x < mapa->ancho; x++) {
             SetTile(mapa, x, mapa->alto - 36, tile_peligro);
-        }
-
-        for (int x = 0; x < 22 && x < mapa->ancho; x++) {
-            SetTile(mapa, x, mapa->alto - 37, tile_peligro);
         }
     }
     
-    // Meta (solo si hay espacio)
+    // Meta (2x2 tiles)
     if (mapa->ancho >= 3 && mapa->alto >= 3) {
         SetTile(mapa, mapa->ancho - 20, mapa->alto - 35, tile_meta);
         SetTile(mapa, mapa->ancho - 21, mapa->alto - 35, tile_meta);
@@ -335,18 +327,31 @@ void CrearMapaEjemplo(Mapa *mapa) {
     TraceLog(LOG_INFO, "Mapa de ejemplo creado exitosamente");
 }
 
-// Verificar colisión con tiles sólidos
+// Verificar colisión con tiles sólidos (versión mejorada)
 int HayTileDebajo(Mapa *mapa, float x, float y, int ancho, int alto) {
     if (!mapa) return 0;
     
-    // Convertir posición del jugador a coordenadas de tile
-    int tileX = (int)(x / mapa->tileSize);
+    // Verificar 5 puntos debajo del jugador para mejor detección
+    float puntosX[] = {
+        x,                          // Esquina izquierda
+        x + ancho * 0.25f,          // 25% del ancho
+        x + ancho * 0.5f,           // Centro
+        x + ancho * 0.75f,          // 75% del ancho  
+        x + ancho - 1               // Esquina derecha
+    };
+    
     int tileY = (int)((y + alto) / mapa->tileSize); // Debajo del jugador
     
-    // Verificar si la posición es válida y el tile es sólido
-    if (tileX >= 0 && tileX < mapa->ancho && tileY >= 0 && tileY < mapa->alto) {
-        int tile = GetTile(mapa, tileX, tileY);
-        return (tile == tile_suelo || tile == tile_meta); // Tiles sólidos
+    for (int i = 0; i < 5; i++) {
+        int tileX = (int)(puntosX[i] / mapa->tileSize);
+        
+        // Verificar si la posición es válida y el tile es sólido
+        if (tileX >= 0 && tileX < mapa->ancho && tileY >= 0 && tileY < mapa->alto) {
+            int tile = GetTile(mapa, tileX, tileY);
+            if (tile == tile_suelo || tile == tile_meta) {
+                return 1; // Encontró un tile sólido
+            }
+        }
     }
     
     return 0;
@@ -364,6 +369,36 @@ int HayAguaDebajo(Mapa *mapa, float x, float y, int ancho, int alto) {
     if (tileX >= 0 && tileX < mapa->ancho && tileY >= 0 && tileY < mapa->alto) {
         int tile = GetTile(mapa, tileX, tileY);
         return (tile == tile_peligro); // Tiles peligrosos
+    }
+    
+    return 0;
+}
+
+// Verificar colisión con tiles sólidos
+int HayLiana(Mapa *mapa, float x, float y, int ancho, int alto) {
+    if (!mapa) return 0;
+    
+    // Verificar 5 puntos debajo del jugador para mejor detección
+    float puntosX[] = {
+        x,                          // Esquina izquierda
+        x + ancho * 0.25f,          // 25% del ancho
+        x + ancho * 0.5f,           // Centro
+        x + ancho * 0.75f,          // 75% del ancho  
+        x + ancho - 1               // Esquina derecha
+    };
+    
+    int tileY = (int)((y + alto) / mapa->tileSize); // Debajo del jugador
+    
+    for (int i = 0; i < 5; i++) {
+        int tileX = (int)(puntosX[i] / mapa->tileSize);
+        
+        // Verificar si la posición es válida y el tile es sólido
+        if (tileX >= 0 && tileX < mapa->ancho && tileY >= 0 && tileY < mapa->alto) {
+            int tile = GetTile(mapa, tileX, tileY);
+            if (tile == tile_liana) {
+                return 1; // Encontró un tile sólido
+            }
+        }
     }
     
     return 0;

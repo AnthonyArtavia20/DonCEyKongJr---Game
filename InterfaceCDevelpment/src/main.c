@@ -44,9 +44,11 @@ int main(void) {
     float velocidad = 5.0f;
     bool enSuelo = false;
     bool enAgua = false;
-    float velocidadY = 0.0f;      // Nueva: velocidad vertical
-    const float gravedad = 0.5f;  // Nueva: fuerza de gravedad
-    const float fuerzaSalto = -12.0f; // Nueva: fuerza del salto (negativo porque Y va hacia abajo)
+    bool enLiana = false;
+    bool sujetandoLiana = false;  // Nueva: control manual de sujeción
+    float velocidadY = 0.0f;
+    const float gravedad = 0.5f;
+    const float fuerzaSalto = -12.0f;
     
     printf("=== INICIANDO BUCLE ===\n");
     
@@ -56,32 +58,64 @@ int main(void) {
         if (IsKeyDown(KEY_RIGHT)) cuadradoPos.x += velocidad;
         if (IsKeyDown(KEY_LEFT)) cuadradoPos.x -= velocidad;
         
-        // --- SALTO CON ESPACIO ---
-        if (enSuelo && IsKeyPressed(KEY_SPACE)) {
-            velocidadY = fuerzaSalto;
-            enSuelo = false;
-        }
-        
-        // --- APLICAR GRAVEDAD ---
-        velocidadY += gravedad;
-        cuadradoPos.y += velocidadY;
-        
-        // --- DETECCIÓN DE SUELO ---
+        // --- DETECCIÓN DE ESTADOS ---
         enSuelo = HayTileDebajo(mapa, cuadradoPos.x, cuadradoPos.y, cuadradoSize, cuadradoSize);
         enAgua = HayAguaDebajo(mapa, cuadradoPos.x, cuadradoPos.y, cuadradoSize, cuadradoSize);
+        enLiana = HayLiana(mapa, cuadradoPos.x, cuadradoPos.y, cuadradoSize, cuadradoSize);
         
-        // Si detectamos suelo, colocar el cuadrado justo encima y resetear velocidad
+        // --- CONTROL MANUAL DE LIANAS (Tecla Z para agarrar/soltar) ---
+        if (enLiana && IsKeyPressed(KEY_Z)) {
+            sujetandoLiana = !sujetandoLiana; // Alternar entre agarrar y soltar
+        }
+        
+        // --- SALTO CON ESPACIO ---
+        if ((enSuelo || sujetandoLiana) && IsKeyPressed(KEY_SPACE)) {
+            velocidadY = fuerzaSalto;
+            enSuelo = false;
+            sujetandoLiana = false; // Soltar liana al saltar
+        }
+        
+        // --- COMPORTAMIENTO EN LIANA (solo si está sujetando) ---
+        if (sujetandoLiana && enLiana) {
+            // Permitir subir y bajar en la liana
+            if (IsKeyDown(KEY_UP)) {
+                cuadradoPos.y -= velocidad;
+            }
+            else if (IsKeyDown(KEY_DOWN)) {
+                cuadradoPos.y += velocidad;
+            }
+            
+            // Movimiento horizontal reducido en liana
+            if (IsKeyDown(KEY_RIGHT)) cuadradoPos.x += velocidad * 0.3f;
+            if (IsKeyDown(KEY_LEFT)) cuadradoPos.x -= velocidad * 0.3f;
+            
+            // Anular gravedad mientras esté sujetando
+            velocidadY = 0;
+        }
+        else {
+            // --- COMPORTAMIENTO NORMAL (no sujetando liana) ---
+            sujetandoLiana = false; // Asegurar que no está sujetando
+            
+            // Aplicar gravedad
+            velocidadY += gravedad;
+            cuadradoPos.y += velocidadY;
+        }
+        
+        // --- COMPORTAMIENTO EN AGUA ---
+        if (enAgua) {
+            cuadradoPos.x = 50;
+            cuadradoPos.y = 600;
+            velocidadY = 0;
+            sujetandoLiana = false; // Soltar liana si cae al agua
+        }
+        
+        // --- CORRECCIÓN DE COLISIÓN CON SUELO ---
         if (enSuelo && velocidadY > 0) {
-            // Calcular la posición exacta encima del tile
             int tileY = (int)((cuadradoPos.y + cuadradoSize) / mapa->tileSize);
             cuadradoPos.y = tileY * mapa->tileSize - cuadradoSize;
             velocidadY = 0;
             enSuelo = true;
-        }
-        if (enAgua) {
-            // Si está en agua, reducir la velocidad de caída
-            cuadradoPos.x = 50;
-            cuadradoPos.y = 600;
+            sujetandoLiana = false; // Soltar liana al tocar suelo
         }
         
         // Limites de pantalla
@@ -94,7 +128,7 @@ int main(void) {
         if (cuadradoPos.y > ALTO_PANTALLA - cuadradoSize) {
             cuadradoPos.y = ALTO_PANTALLA - cuadradoSize;
             enSuelo = true;
-            velocidadY = 0;
+            velocidadY = -1;
         }
         
         // --- DIBUJADO ---
@@ -104,16 +138,23 @@ int main(void) {
             // Dibujar mapa
             DibujarMapa(mapa);
             
-            // Dibujar cuadrado azul movible
-            DrawRectangle(cuadradoPos.x, cuadradoPos.y, cuadradoSize, cuadradoSize, BLUE);
+            // Dibujar cuadrado (color según estado)
+            Color colorCuadrado = BLUE;
+            if (enLiana && !sujetandoLiana) colorCuadrado = ORANGE;    // Liana disponible
+            if (sujetandoLiana) colorCuadrado = GREEN;                 // Sujetando liana
+            if (enAgua) colorCuadrado = SKYBLUE;                       // En agua
+            
+            DrawRectangle(cuadradoPos.x, cuadradoPos.y, cuadradoSize, cuadradoSize, colorCuadrado);
             DrawRectangleLines(cuadradoPos.x, cuadradoPos.y, cuadradoSize, cuadradoSize, YELLOW);
             
             // UI de debug
             DrawText("DEBUG - DON CEY KONG JR", 10, 10, 20, YELLOW);
             DrawText(TextFormat("Posicion: (%.0f, %.0f)", cuadradoPos.x, cuadradoPos.y), 10, 35, 15, GREEN);
             DrawText(TextFormat("En suelo: %s", enSuelo ? "SI" : "NO"), 10, 55, 15, enSuelo ? GREEN : RED);
-            DrawText(TextFormat("Velocidad Y: %.1f", velocidadY), 10, 75, 15, BLUE);
-            DrawText("Flechas: mover | ESPACIO: saltar", 10, 95, 15, RED);
+            DrawText(TextFormat("Liana disponible: %s", enLiana ? "SI" : "NO"), 10, 75, 15, enLiana ? ORANGE : RED);
+            DrawText(TextFormat("Sujetando liana: %s", sujetandoLiana ? "SI" : "NO"), 10, 95, 15, sujetandoLiana ? GREEN : RED);
+            DrawText(TextFormat("En agua: %s", enAgua ? "SI" : "NO"), 10, 115, 15, enAgua ? BLUE : RED);
+            DrawText("Flechas: mover | ESPACIO: saltar | Z: agarrar/soltar liana", 10, 135, 12, RED);
             DrawText("Presiona ESC para salir", 10, ALTO_PANTALLA - 25, 15, WHITE);
             
         EndDrawing();
