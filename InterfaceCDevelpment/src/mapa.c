@@ -351,3 +351,20 @@ int HayTileDebajo(Mapa *mapa, float x, float y, int ancho, int alto) {
     
     return 0;
 }
+
+// Verificar colisión con tiles sólidos
+int HayAguaDebajo(Mapa *mapa, float x, float y, int ancho, int alto) {
+    if (!mapa) return 0;
+    
+    // Convertir posición del jugador a coordenadas de tile
+    int tileX = (int)(x / mapa->tileSize);
+    int tileY = (int)((y + alto) / mapa->tileSize); // Debajo del jugador
+    
+    // Verificar si la posición es válida y el tile es peligrosa
+    if (tileX >= 0 && tileX < mapa->ancho && tileY >= 0 && tileY < mapa->alto) {
+        int tile = GetTile(mapa, tileX, tileY);
+        return (tile == tile_peligro); // Tiles peligrosos
+    }
+    
+    return 0;
+}

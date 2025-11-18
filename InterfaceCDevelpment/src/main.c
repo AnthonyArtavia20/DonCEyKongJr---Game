@@ -43,6 +43,7 @@ int main(void) {
     int cuadradoSize = 50;
     float velocidad = 5.0f;
     bool enSuelo = false;
+    bool enAgua = false;
     float velocidadY = 0.0f;      // Nueva: velocidad vertical
     const float gravedad = 0.5f;  // Nueva: fuerza de gravedad
     const float fuerzaSalto = -12.0f; // Nueva: fuerza del salto (negativo porque Y va hacia abajo)
@@ -67,6 +68,7 @@ int main(void) {
         
         // --- DETECCIÓN DE SUELO ---
         enSuelo = HayTileDebajo(mapa, cuadradoPos.x, cuadradoPos.y, cuadradoSize, cuadradoSize);
+        enAgua = HayAguaDebajo(mapa, cuadradoPos.x, cuadradoPos.y, cuadradoSize, cuadradoSize);
         
         // Si detectamos suelo, colocar el cuadrado justo encima y resetear velocidad
         if (enSuelo && velocidadY > 0) {
@@ -75,6 +77,11 @@ int main(void) {
             cuadradoPos.y = tileY * mapa->tileSize - cuadradoSize;
             velocidadY = 0;
             enSuelo = true;
+        }
+        if (enAgua) {
+            // Si está en agua, reducir la velocidad de caída
+            cuadradoPos.x = 50;
+            cuadradoPos.y = 600;
         }
         
         // Limites de pantalla

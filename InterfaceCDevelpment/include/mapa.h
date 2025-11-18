@@ -34,7 +34,7 @@ void SetTile(Mapa *mapa, int x, int y, TileType tipo);
 //Funcion para crear un mapa d eejemplo
 void CrearMapaEjemplo(Mapa *mapa);
 
-// Agrega esta línea con las otras funciones públicas
 int HayTileDebajo(Mapa *mapa, float x, float y, int ancho, int alto);
+int HayAguaDebajo(Mapa *mapa, float x, float y, int ancho, int alto);
 
 #endif
