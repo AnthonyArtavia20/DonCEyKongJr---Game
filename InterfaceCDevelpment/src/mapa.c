@@ -1,5 +1,5 @@
-#include "mapa.h"
-#include "raylib.h"
+#include "../include/mapa.h"
+#include "C:/msys64/mingw64/include/raylib.h"
 #include <stdlib.h>
 #include <stdio.h>
 

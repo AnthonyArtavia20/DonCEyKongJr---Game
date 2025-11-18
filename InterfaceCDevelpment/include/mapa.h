@@ -1,7 +1,7 @@
 #ifndef MAPA_H
 #define MAPA_H
 
-#include "raylib.h"
+#include "C:/msys64/mingw64/include/raylib.h"
 
 // Definicion de tipos de tiles
 typedef enum {
