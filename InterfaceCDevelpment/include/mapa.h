@@ -1,14 +1,14 @@
 #ifndef MAPA_H
 #define MAPA_H
 
-#include "C:/msys64/mingw64/include/raylib.h"
+#include "raylib.h"
 
 // Definicion de tipos de tiles
 typedef enum {
-    tile_vacio = 0,
-    tile_suelo = 1,
-    tile_liana = 2,
-    tile_peligro = 3,
+    tile_suelo = 0,
+    tile_liana = 1,
+    tile_peligro = 2,
+    tile_vacio = 3,
     tile_meta = 4
 } TileType;
 
@@ -33,9 +33,5 @@ void SetTile(Mapa *mapa, int x, int y, TileType tipo);
 
 //Funcion para crear un mapa d eejemplo
 void CrearMapaEjemplo(Mapa *mapa);
-
-int HayTileDebajo(Mapa *mapa, float x, float y, int ancho, int alto);
-int HayAguaDebajo(Mapa *mapa, float x, float y, int ancho, int alto);
-int HayLiana(Mapa *mapa, float x, float y, int ancho, int alto);
 
 #endif
