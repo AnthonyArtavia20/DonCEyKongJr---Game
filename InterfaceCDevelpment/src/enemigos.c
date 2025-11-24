@@ -248,9 +248,8 @@ void ActualizarCocodriloAzul(Enemigo* enemigo, GestorEnemigos* gestor, float del
     if (!gestor->mapa) return;
     
     // Comportamiento del cocodrilo azul:
-    // 1. Si no está en liana, busca una liana cercana y se posiciona en ella
-    // 2. Si está en liana, baja hasta el final
-    // 3. Cuando llega al final, cae hasta desaparecer
+    // 1. Solo baja por la liana
+    // 2. Cuando llega al final, se elimina
     
     if (!enemigo->enLiana) {
         // Buscar liana cercana usando el nuevo sistema
@@ -280,23 +279,34 @@ void ActualizarCocodriloAzul(Enemigo* enemigo, GestorEnemigos* gestor, float del
         enemigo->velocidad.x = 0;
         enemigo->velocidad.y = VELOCIDAD_COCODRILO_AZUL;
         
-        // Verificar si sigue en una liana
+        // Verificar si llegó al final de la liana
         LianaInfo* lianaActual = ObtenerLianaPorID(gestor, enemigo->lianaActual);
-        int sigueEnLiana = 0;
+        int llegoAlFinal = 0;
         
         if (lianaActual) {
-            // Verificar si todavía está dentro del rango Y de la liana
+            // Verificar si llegó al final de la liana (parte inferior)
             float posYEnTiles = (enemigo->posicion.y + enemigo->hitbox.height) / gestor->mapa->tileSize;
-            if (posYEnTiles <= lianaActual->tileY_fin) {
-                sigueEnLiana = 1;
+            if (posYEnTiles >= lianaActual->tileY_fin) {
+                llegoAlFinal = 1;
             }
         }
         
-        if (!sigueEnLiana || enemigo->posicion.y > ALTO_PANTALLA - 100) {
-            // Llegó al final de la liana o se salió
-            enemigo->enLiana = 0;
-            enemigo->velocidad = (Vector2){0, VELOCIDAD_COCODRILO_AZUL * 2}; // Caer más rápido
-            printf("[CocodriloAzul] ID %d llegó al final de la liana\n", enemigo->id);
+        // También verificar si se salió de la liana por colisión
+        int tileX = (int)((enemigo->posicion.x + enemigo->hitbox.width/2) / gestor->mapa->tileSize);
+        int tileY = (int)((enemigo->posicion.y + enemigo->hitbox.height) / gestor->mapa->tileSize);
+        
+        int enLianaActual = 0;
+        if (tileX >= 0 && tileX < gestor->mapa->ancho && tileY >= 0 && tileY < gestor->mapa->alto) {
+            int tile = GetTile(gestor->mapa, tileX, tileY);
+            enLianaActual = (tile == tile_liana);
+        }
+        
+        if (llegoAlFinal || !enLianaActual || enemigo->posicion.y > ALTO_PANTALLA - 100) {
+            // Llegó al final de la liana o se salió - ELIMINAR
+            printf("[CocodriloAzul] ID %d llegó al final de la liana - ELIMINANDO\n", enemigo->id);
+            enemigo->activo = 0;
+            gestor->cantidad_enemigos--;
+            return; // Salir de la función, el enemigo ya no existe
         }
     }
     
@@ -307,7 +317,7 @@ void ActualizarCocodriloAzul(Enemigo* enemigo, GestorEnemigos* gestor, float del
     // Si se sale completamente de pantalla, eliminar
     if (enemigo->posicion.y > ALTO_PANTALLA + 100) {
         enemigo->activo = 0;
-        gestor->cantidad_enemigos--;  // <--- CORREGIDO: cantidad_enemigos en lugar de cantidad
+        gestor->cantidad_enemigos--;
         printf("[CocodriloAzul] ID %d eliminado (fuera de pantalla)\n", enemigo->id);
     }
 }
@@ -317,9 +327,9 @@ void ActualizarCocodriloRojo(Enemigo* enemigo, GestorEnemigos* gestor, float del
     if (!gestor->mapa) return;
     
     // Comportamiento del cocodrilo rojo:
-    // 1. Solo se mueve verticalmente en lianas
-    // 2. Cambia dirección periódicamente
-    // 3. Si pierde la liana, busca una nueva
+    // 1. Se mueve verticalmente en lianas
+    // 2. Cambia dirección cuando detecta el final de la liana
+    // 3. Nunca se elimina (a menos que salga de pantalla)
     
     // Verificar si está en una liana usando el nuevo sistema
     LianaInfo* lianaActual = ObtenerLianaPorID(gestor, enemigo->lianaActual);
@@ -327,8 +337,10 @@ void ActualizarCocodriloRojo(Enemigo* enemigo, GestorEnemigos* gestor, float del
     
     if (lianaActual) {
         // Verificar si está dentro del rango Y de la liana
-        float posYEnTiles = (enemigo->posicion.y + enemigo->hitbox.height) / gestor->mapa->tileSize;
-        if (posYEnTiles >= lianaActual->tileY_inicio && posYEnTiles <= lianaActual->tileY_fin) {
+        float posYEnTiles = enemigo->posicion.y / gestor->mapa->tileSize;
+        float posYInferiorEnTiles = (enemigo->posicion.y + enemigo->hitbox.height) / gestor->mapa->tileSize;
+        
+        if (posYInferiorEnTiles >= lianaActual->tileY_inicio && posYEnTiles <= lianaActual->tileY_fin) {
             enLianaActual = 1;
         }
     }
@@ -345,6 +357,7 @@ void ActualizarCocodriloRojo(Enemigo* enemigo, GestorEnemigos* gestor, float del
                 enemigo->posicion.y = centroLiana;
                 enemigo->enLiana = 1;
                 enemigo->lianaActual = lianaID;
+                enemigo->direccion = -1; // Empezar bajando
                 printf("[CocodriloRojo] ID %d se reubicó en liana %d\n", enemigo->id, lianaID);
             }
         } else {
@@ -354,14 +367,51 @@ void ActualizarCocodriloRojo(Enemigo* enemigo, GestorEnemigos* gestor, float del
         }
     }
     
-    // Comportamiento normal en liana
-    enemigo->tiempoCambioDireccion += deltaTime;
-    
-    if (enemigo->tiempoCambioDireccion >= TIEMPO_CAMBIO_DIRECCION) {
-        enemigo->direccion *= -1; // Cambiar dirección
-        enemigo->tiempoCambioDireccion = 0.0f;
-        printf("[CocodriloRojo] ID %d cambió dirección: %s\n", 
-               enemigo->id, (enemigo->direccion > 0) ? "ARRIBA" : "ABAJO");
+    // Comportamiento normal en liana - DETECCIÓN DE FINALES
+    if (lianaActual) {
+        float minY = lianaActual->tileY_inicio * gestor->mapa->tileSize;
+        float maxY = lianaActual->tileY_fin * gestor->mapa->tileSize - enemigo->hitbox.height;
+        
+        // Verificar si llegó al tope superior
+        if (enemigo->posicion.y <= minY) {
+            enemigo->posicion.y = minY;
+            enemigo->direccion = 1; // Cambiar a bajar
+            printf("[CocodriloRojo] ID %d llegó al tope - cambiando a BAJAR\n", enemigo->id);
+        }
+        // Verificar si llegó al tope inferior
+        else if (enemigo->posicion.y >= maxY) {
+            enemigo->posicion.y = maxY;
+            enemigo->direccion = -1; // Cambiar a subir
+            printf("[CocodriloRojo] ID %d llegó al fondo - cambiando a SUBIR\n", enemigo->id);
+        }
+        
+        // También verificar por colisión con tiles
+        int tileX = (int)((enemigo->posicion.x + enemigo->hitbox.width/2) / gestor->mapa->tileSize);
+        int tileYSuperior = (int)(enemigo->posicion.y / gestor->mapa->tileSize);
+        int tileYInferior = (int)((enemigo->posicion.y + enemigo->hitbox.height) / gestor->mapa->tileSize);
+        
+        // Verificar si hay liana en la posición actual
+        int hayLianaArriba = 0;
+        int hayLianaAbajo = 0;
+        
+        if (tileX >= 0 && tileX < gestor->mapa->ancho) {
+            if (tileYSuperior >= 0 && tileYSuperior < gestor->mapa->alto) {
+                hayLianaArriba = (GetTile(gestor->mapa, tileX, tileYSuperior) == tile_liana);
+            }
+            if (tileYInferior >= 0 && tileYInferior < gestor->mapa->alto) {
+                hayLianaAbajo = (GetTile(gestor->mapa, tileX, tileYInferior) == tile_liana);
+            }
+        }
+        
+        // Cambiar dirección si no hay liana en la dirección actual
+        if (enemigo->direccion < 0 && !hayLianaArriba) { // Subiendo pero no hay liana arriba
+            enemigo->direccion = 1; // Cambiar a bajar
+            printf("[CocodriloRojo] ID %d - no hay liana arriba, cambiando a BAJAR\n", enemigo->id);
+        }
+        else if (enemigo->direccion > 0 && !hayLianaAbajo) { // Bajando pero no hay liana abajo
+            enemigo->direccion = -1; // Cambiar a subir
+            printf("[CocodriloRojo] ID %d - no hay liana abajo, cambiando a SUBIR\n", enemigo->id);
+        }
     }
     
     // Movimiento vertical en la liana
@@ -371,18 +421,11 @@ void ActualizarCocodriloRojo(Enemigo* enemigo, GestorEnemigos* gestor, float del
     // Aplicar movimiento
     enemigo->posicion.y += enemigo->velocidad.y;
     
-    // Limitar movimiento vertical para no salirse de la liana
-    if (lianaActual) {
-        float minY = lianaActual->tileY_inicio * gestor->mapa->tileSize;
-        float maxY = lianaActual->tileY_fin * gestor->mapa->tileSize;
-        
-        if (enemigo->posicion.y < minY) {
-            enemigo->posicion.y = minY;
-            enemigo->direccion = 1; // Forzar a bajar
-        } else if (enemigo->posicion.y > maxY - enemigo->hitbox.height) {
-            enemigo->posicion.y = maxY - enemigo->hitbox.height;
-            enemigo->direccion = -1; // Forzar a subir
-        }
+    // Si se sale completamente de pantalla, eliminar (solo por seguridad)
+    if (enemigo->posicion.y > ALTO_PANTALLA + 100 || enemigo->posicion.y < -100) {
+        enemigo->activo = 0;
+        gestor->cantidad_enemigos--;
+        printf("[CocodriloRojo] ID %d eliminado (fuera de pantalla)\n", enemigo->id);
     }
 }
 
