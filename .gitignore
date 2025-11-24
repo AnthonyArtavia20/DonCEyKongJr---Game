@@ -1,0 +1,27 @@
+# Binarios compilados
+*.exe
+*.o
+*.class
+*.dll
+
+# Directorios de compilación
+GameServer/bin/
+InterfaceCDevelpment/obj/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+run.log
+
+# Temporales
+*.tmp

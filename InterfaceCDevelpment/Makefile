@@ -1,7 +1,7 @@
 # Compilador y flags
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c99 -O2 -g -Iinclude -IC:/msys64/mingw64/include
-LDFLAGS = -lraylib -lopengl32 -lgdi32 -lwinmm -lm
+LDFLAGS = -lraylib -lopengl32 -lgdi32 -lwinmm -lws2_32 -lm
 
 # Directorios
 SRC_DIR = src
@@ -16,10 +16,16 @@ OBJECTS = $(SOURCES:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
 TARGET = $(BIN_DIR)/DonCEyKongJrClient.exe
 
 # Regla principal
-all: $(TARGET)
+all: $(TARGET) copy_dlls
 
 $(TARGET): $(OBJECTS) | $(BIN_DIR)
 	$(CC) $(OBJECTS) -o $@ $(LDFLAGS)
+
+# Copiar DLLs necesarios
+copy_dlls: $(BIN_DIR)
+	@echo "Copiando DLLs necesarios..."
+	@cp -u C:/msys64/mingw64/bin/libraylib.dll $(BIN_DIR)/ 2>/dev/null || true
+	@cp -u C:/msys64/mingw64/bin/glfw3.dll $(BIN_DIR)/ 2>/dev/null || true
 
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -30,9 +36,6 @@ $(BIN_DIR):
 
 $(OBJ_DIR):
 	@mkdir -p $(OBJ_DIR)
-
-# Agregar ws2_32 para Winsock
-LDLIBS = $(if $(PKG_LIBS),$(PKG_LIBS),-lraylib -lopengl32 -lgdi32 -lwinmm -lws2_32 -mwindows)
 
 # Limpiar archivos compilados
 clean:
