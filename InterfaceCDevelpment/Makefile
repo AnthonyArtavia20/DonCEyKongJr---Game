@@ -37,9 +37,10 @@ $(BIN_DIR):
 $(OBJ_DIR):
 	@mkdir -p $(OBJ_DIR)
 
-# Limpiar archivos compilados
+# Limpiar archivos compilados (sin borrar assets ni DLLs)
 clean:
-	rm -rf $(OBJ_DIR) $(BIN_DIR)
+	rm -rf $(OBJ_DIR)
+	rm -f $(TARGET)
 
 # Recompilar desde cero
 rebuild: clean all
