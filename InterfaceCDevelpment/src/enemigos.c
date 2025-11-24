@@ -16,6 +16,13 @@ void InicializarEnemigos(GestorEnemigos* gestor, Mapa* mapa) {
     gestor->mapa = mapa;
     gestor->proximo_id = 1;
     
+    // Inicializar texturas
+    gestor->tex_cocodrilo_azul = (Texture2D){0};
+    gestor->tex_cocodrilo_rojo = (Texture2D){0};
+    
+    // Cargar texturas
+    CargarTexturasEnemigos(gestor);
+    
     // Inicializar enemigos
     for (int i = 0; i < MAX_ENEMIGOS; i++) {
         gestor->enemigos[i].activo = 0;
@@ -33,6 +40,134 @@ void InicializarEnemigos(GestorEnemigos* gestor, Mapa* mapa) {
     
     printf("[Enemigos] Gestor inicializado. Enemigos: %d, Lianas: %d, Proximo ID: %d\n", 
            gestor->cantidad_enemigos, gestor->cantidad_lianas, gestor->proximo_id);
+}
+
+// ===== SISTEMA DE TEXTURAS =====
+
+void CargarTexturasEnemigos(GestorEnemigos* gestor) {
+    printf("[Enemigos] Cargando texturas de enemigos...\n");
+    
+    // Cargar textura del cocodrilo azul
+    if (FileExists("assets/cocodrilo_azul.png")) {
+        Image img_azul = LoadImage("assets/cocodrilo_azul.png");
+        gestor->tex_cocodrilo_azul = LoadTextureFromImage(img_azul);
+        UnloadImage(img_azul);
+        printf("[Enemigos] Textura cocodrilo_azul.png cargada: %dx%d\n", 
+               gestor->tex_cocodrilo_azul.width, gestor->tex_cocodrilo_azul.height);
+    } else {
+        printf("[Enemigos] AVISO: assets/cocodrilo_azul.png no encontrado\n");
+    }
+    
+    // Cargar textura del cocodrilo rojo
+    if (FileExists("assets/cocodrilo_rojo.png")) {
+        Image img_rojo = LoadImage("assets/cocodrilo_rojo.png");
+        gestor->tex_cocodrilo_rojo = LoadTextureFromImage(img_rojo);
+        UnloadImage(img_rojo);
+        printf("[Enemigos] Textura cocodrilo_rojo.png cargada: %dx%d\n", 
+               gestor->tex_cocodrilo_rojo.width, gestor->tex_cocodrilo_rojo.height);
+    } else {
+        printf("[Enemigos] AVISO: assets/cocodrilo_rojo.png no encontrado\n");
+    }
+}
+
+void LiberarTexturasEnemigos(GestorEnemigos* gestor) {
+    if (gestor->tex_cocodrilo_azul.id != 0) {
+        UnloadTexture(gestor->tex_cocodrilo_azul);
+        printf("[Enemigos] Textura cocodrilo_azul liberada\n");
+    }
+    
+    if (gestor->tex_cocodrilo_rojo.id != 0) {
+        UnloadTexture(gestor->tex_cocodrilo_rojo);
+        printf("[Enemigos] Textura cocodrilo_rojo liberada\n");
+    }
+}
+
+// ===== FUNCIÓN DIBUJAR ENEMIGOS ACTUALIZADA =====
+
+void DibujarEnemigos(GestorEnemigos* gestor) {
+    for (int i = 0; i < MAX_ENEMIGOS; i++) {
+        if (!gestor->enemigos[i].activo) continue;
+        
+        Texture2D* textura = NULL;
+        Color colorDebug;
+        const char* tipoTexto;
+        
+        switch (gestor->enemigos[i].tipo) {
+            case COCODRILO_AZUL:
+                if (gestor->tex_cocodrilo_azul.id != 0) {
+                    textura = &gestor->tex_cocodrilo_azul;
+                }
+                colorDebug = BLUE;
+                tipoTexto = "AZUL";
+                break;
+            case COCODRILO_ROJO:
+                if (gestor->tex_cocodrilo_rojo.id != 0) {
+                    textura = &gestor->tex_cocodrilo_rojo;
+                }
+                colorDebug = RED;
+                tipoTexto = "ROJO";
+                break;
+            default:
+                colorDebug = GRAY;
+                tipoTexto = "DESCONOCIDO";
+        }
+        
+        // Dibujar sprite si la textura está cargada
+        if (textura && textura->id != 0) {
+            // TAMAÑO DESEADO PARA EL SPRITE (puedes ajustar estos valores)
+            float anchoDeseado = 60.0f;   // Sprite de 60px de ancho
+            float altoDeseado = 60.0f;    // Sprite de 60px de alto
+            
+            // Calcular escalas
+            float escalaX = anchoDeseado / textura->width;
+            float escalaY = altoDeseado / textura->height;
+            
+            // Usar la escala más pequeña para mantener proporciones, o la más grande para llenar
+            float escala = (escalaX < escalaY) ? escalaX : escalaY; // Mantiene proporción
+            // float escala = (escalaX > escalaY) ? escalaX : escalaY; // Llena el espacio (puede distorsionar)
+            
+            // Calcular dimensiones escaladas
+            float anchoEscalado = textura->width * escala;
+            float altoEscalado = textura->height * escala;
+            
+            // Calcular posición centrada en el hitbox
+            float offsetX = (gestor->enemigos[i].hitbox.width - anchoEscalado) / 2;
+            float offsetY = (gestor->enemigos[i].hitbox.height - altoEscalado) / 2;
+            
+            Rectangle destRect = {
+                gestor->enemigos[i].posicion.x + offsetX,
+                gestor->enemigos[i].posicion.y + offsetY,
+                anchoEscalado,
+                altoEscalado
+            };
+            
+            // Dibujar el sprite
+            DrawTexturePro(*textura, 
+                          (Rectangle){0, 0, (float)textura->width, (float)textura->height},
+                          destRect,
+                          (Vector2){0, 0},
+                          0.0f,
+                          WHITE);
+        } else {
+            // Si no hay textura, dibujar cuadro de debug
+            DrawRectangleRec(gestor->enemigos[i].hitbox, colorDebug);
+        }
+        
+        // Dibujar hitbox para colisiones (semi-transparente para debug)
+        DrawRectangleLinesEx(gestor->enemigos[i].hitbox, 2, (Color){colorDebug.r, colorDebug.g, colorDebug.b, 150});
+        
+        // Indicador de tipo (solo en debug)
+        #ifdef DEBUG
+        DrawText(TextFormat("C%s", tipoTexto), 
+                gestor->enemigos[i].posicion.x + 5, 
+                gestor->enemigos[i].posicion.y - 15, 10, WHITE);
+        
+        if (gestor->enemigos[i].enLiana) {
+            DrawText("LIANA", gestor->enemigos[i].posicion.x + 5, 
+                    gestor->enemigos[i].posicion.y - 30, 8, GREEN);
+        }
+        #endif
+    }
 }
 
 // ===== NUEVA FUNCIÓN PARA COMANDOS DE JAVA =====
@@ -499,39 +634,4 @@ float ObtenerPosicionXLianaPorID(GestorEnemigos* gestor, int lianaID) {
         return liana->x_pos;
     }
     return 0;
-}
-
-void DibujarEnemigos(GestorEnemigos* gestor) {
-    for (int i = 0; i < MAX_ENEMIGOS; i++) {
-        if (!gestor->enemigos[i].activo) continue;
-        
-        Color color;
-        const char* tipoTexto;
-        
-        switch (gestor->enemigos[i].tipo) {
-            case COCODRILO_AZUL:
-                color = BLUE;
-                tipoTexto = "AZUL";
-                break;
-            case COCODRILO_ROJO:
-                color = RED;
-                tipoTexto = "ROJO";
-                break;
-            default:
-                color = GRAY;
-                tipoTexto = "DESCONOCIDO";
-        }
-        
-        DrawRectangleRec(gestor->enemigos[i].hitbox, color);
-        DrawRectangleLinesEx(gestor->enemigos[i].hitbox, 2, DARKGRAY);
-        
-        DrawText(TextFormat("C%s", tipoTexto), 
-                gestor->enemigos[i].posicion.x + 5, 
-                gestor->enemigos[i].posicion.y - 15, 10, WHITE);
-        
-        if (gestor->enemigos[i].enLiana) {
-            DrawText("LIANA", gestor->enemigos[i].posicion.x + 5, 
-                    gestor->enemigos[i].posicion.y - 30, 8, GREEN);
-        }
-    }
 }

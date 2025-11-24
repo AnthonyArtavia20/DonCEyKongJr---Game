@@ -9,8 +9,8 @@
 #define ALTO_PANTALLA 800
 
 typedef enum {
-    COCODRILO_AZUL = 1,  // <--- Cambiado para coincidir con Java (1 = Azul)
-    COCODRILO_ROJO = 2   // <--- Cambiado para coincidir con Java (2 = Rojo)
+    COCODRILO_AZUL = 1,
+    COCODRILO_ROJO = 2
 } TipoEnemigo;
 
 typedef struct {
@@ -41,16 +41,18 @@ typedef struct {
     int cantidad_enemigos;
     int cantidad_lianas;
     Mapa* mapa;
-    int proximo_id;  // <--- NUEVO: Para IDs automáticos
+    int proximo_id;
+    Texture2D tex_cocodrilo_azul;  // <--- NUEVO: Textura para cocodrilo azul
+    Texture2D tex_cocodrilo_rojo;  // <--- NUEVO: Textura para cocodrilo rojo
 } GestorEnemigos;
 
 // Funciones principales
 void InicializarEnemigos(GestorEnemigos* gestor, Mapa* mapa);
+void CargarTexturasEnemigos(GestorEnemigos* gestor);  // <--- NUEVA: Cargar texturas
+void LiberarTexturasEnemigos(GestorEnemigos* gestor); // <--- NUEVA: Liberar texturas
 int CrearEnemigo(GestorEnemigos* gestor, int id, TipoEnemigo tipo, float x, float y);
 int CrearEnemigoEnLiana(GestorEnemigos* gestor, int id, TipoEnemigo tipo, int lianaID);
-
-// NUEVA FUNCIÓN PARA JAVA
-int CrearEnemigoDesdeJava(GestorEnemigos* gestor, int tipoEnemigo, int lianaID);  // <--- NUEVA
+int CrearEnemigoDesdeJava(GestorEnemigos* gestor, int tipoEnemigo, int lianaID);
 
 void EliminarEnemigo(GestorEnemigos* gestor, int id);
 void ActualizarEnemigos(GestorEnemigos* gestor, float deltaTime);

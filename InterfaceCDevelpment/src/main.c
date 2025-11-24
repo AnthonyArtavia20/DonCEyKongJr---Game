@@ -60,10 +60,10 @@ int main(void) {
     InicializarEnemigos(&gestorEnemigos, mapa);
 
     /////////////////////////////////////DEBUG////////////////////////////////////////////
-    
+
     // ===== CREAR ENEMIGOS DE PRUEBA (TEMPORAL) ===== <--- DESPUÉS CREAR ENEMIGOS
     printf("=== Creando enemigos de prueba ===\n");
-    CrearEnemigoEnLiana(&gestorEnemigos, 1, COCODRILO_ROJO, 1); // Liana ID 1
+    CrearEnemigoEnLiana(&gestorEnemigos, 1, COCODRILO_AZUL, 1); // Liana ID 1
     CrearEnemigoEnLiana(&gestorEnemigos, 2, COCODRILO_ROJO, 2); // Liana ID 2  
     CrearEnemigoEnLiana(&gestorEnemigos, 3, COCODRILO_ROJO, 3); // Liana ID 3
     CrearEnemigoEnLiana(&gestorEnemigos, 4, COCODRILO_ROJO, 4); // Liana ID 1
@@ -318,6 +318,7 @@ int main(void) {
     if (conectado) {
         desconectar_servidor();
     }
+    LiberarTexturasEnemigos(&gestorEnemigos);
     LiberarMapa(mapa);
     CloseWindow();
     
