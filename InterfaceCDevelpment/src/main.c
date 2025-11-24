@@ -59,11 +59,23 @@ int main(void) {
     // ===== INICIALIZAR SISTEMA DE ENEMIGOS ===== <--- PRIMERO INICIALIZAR
     InicializarEnemigos(&gestorEnemigos, mapa);
 
+    /////////////////////////////////////DEBUG////////////////////////////////////////////
+    
     // ===== CREAR ENEMIGOS DE PRUEBA (TEMPORAL) ===== <--- DESPUÉS CREAR ENEMIGOS
     printf("=== Creando enemigos de prueba ===\n");
-    CrearEnemigoEnLiana(&gestorEnemigos, 1, COCODRILO_AZUL, 1); // Liana ID 1
+    CrearEnemigoEnLiana(&gestorEnemigos, 1, COCODRILO_ROJO, 1); // Liana ID 1
     CrearEnemigoEnLiana(&gestorEnemigos, 2, COCODRILO_ROJO, 2); // Liana ID 2  
-    CrearEnemigoEnLiana(&gestorEnemigos, 3, COCODRILO_AZUL, 3); // Liana ID 3
+    CrearEnemigoEnLiana(&gestorEnemigos, 3, COCODRILO_ROJO, 3); // Liana ID 3
+    CrearEnemigoEnLiana(&gestorEnemigos, 4, COCODRILO_ROJO, 4); // Liana ID 1
+    CrearEnemigoEnLiana(&gestorEnemigos, 5, COCODRILO_ROJO, 5); // Liana ID 2  
+    CrearEnemigoEnLiana(&gestorEnemigos, 6, COCODRILO_ROJO, 6); // Liana ID 3
+    CrearEnemigoEnLiana(&gestorEnemigos, 7, COCODRILO_ROJO, 7); // Liana ID 1
+    CrearEnemigoEnLiana(&gestorEnemigos, 8, COCODRILO_ROJO, 8); // Liana ID 2  
+    CrearEnemigoEnLiana(&gestorEnemigos, 9, COCODRILO_ROJO, 11); // Liana ID 3
+    CrearEnemigoEnLiana(&gestorEnemigos, 10, COCODRILO_ROJO, 12); // Liana ID 1
+
+    /////////////////////////////////////DEBUG////////////////////////////////////////////
+
     
     // --- VARIABLES DEL JUGADOR ---
     Vector2 cuadradoPos = {50, 100};
@@ -87,28 +99,53 @@ int main(void) {
     while (!WindowShouldClose()) {
         // ===== RECIBIR MENSAJES DEL SERVIDOR =====
         if (conectado && esta_conectado()) {
-            int bytes = recibir_mensaje(buffer_recepcion, sizeof(buffer_recepcion));
-            if (bytes > 0) {
-                printf("[Servidor]: %s\n", buffer_recepcion);
-                
-                // ===== PROCESAR COMANDOS DE ENEMIGOS DEL SERVIDOR =====
-                if (strstr(buffer_recepcion, "ENEMY|CREATE|") != NULL) {
-                    // Formato: ENEMY|CREATE|ID|TIPO|X|Y
-                    int id, tipo, x, y;
-                    if (sscanf(buffer_recepcion, "ENEMY|CREATE|%d|%d|%d|%d", &id, &tipo, &x, &y) == 4) {
-                        CrearEnemigo(&gestorEnemigos, id, (TipoEnemigo)tipo, (float)x, (float)y);
-                    }
+    int bytes = recibir_mensaje(buffer_recepcion, sizeof(buffer_recepcion));
+    if (bytes > 0) {
+        printf("[Servidor]: %s\n", buffer_recepcion);
+        
+        // ===== PROCESAR COMANDOS DE ENEMIGOS DEL SERVIDOR =====
+        if (strstr(buffer_recepcion, "ENEMY|CREATE|") != NULL) {
+            // Formato: ENEMY|CREATE|TIPO|LIANA
+            int tipo, liana;
+            if (sscanf(buffer_recepcion, "ENEMY|CREATE|%d|%d", &tipo, &liana) == 2) {
+                int idCreado = CrearEnemigoDesdeJava(&gestorEnemigos, tipo, liana);
+                if (idCreado != -1) {
+                    printf("[Java] Enemigo creado exitosamente - ID: %d\n", idCreado);
+                } else {
+                    printf("[Java] Error al crear enemigo\n");
                 }
-                else if (strstr(buffer_recepcion, "ENEMY|REMOVE|") != NULL) {
-                    // Formato: ENEMY|REMOVE|ID
-                    int id;
-                    if (sscanf(buffer_recepcion, "ENEMY|REMOVE|%d", &id) == 1) {
-                        EliminarEnemigo(&gestorEnemigos, id);
-                    }
-                }
-                // TODO: Parsear GAMESTATE y actualizar posiciones de otros jugadores
+            } else {
+                printf("[Java] Formato inválido. Usar: ENEMY|CREATE|TIPO|LIANA\n");
             }
         }
+        else if (strstr(buffer_recepcion, "ENEMY|REMOVE|") != NULL) {
+            // Formato: ENEMY|REMOVE|ID
+            int id;
+            if (sscanf(buffer_recepcion, "ENEMY|REMOVE|%d", &id) == 1) {
+                EliminarEnemigo(&gestorEnemigos, id);
+                printf("[Java] Comando recibido: Eliminar enemigo ID %d\n", id);
+            }
+        }
+        else if (strstr(buffer_recepcion, "ENEMY|LIST") != NULL) {
+            // Comando para listar enemigos activos
+            printf("[Java] Enemigos activos: %d\n", gestorEnemigos.cantidad_enemigos);
+            for (int i = 0; i < MAX_ENEMIGOS; i++) {
+                if (gestorEnemigos.enemigos[i].activo) {
+                    printf("  - ID: %d, Tipo: %d, Liana: %d, Pos: (%.0f, %.0f)\n",
+                           gestorEnemigos.enemigos[i].id,
+                           gestorEnemigos.enemigos[i].tipo,
+                           gestorEnemigos.enemigos[i].lianaActual,
+                           gestorEnemigos.enemigos[i].posicion.x,
+                           gestorEnemigos.enemigos[i].posicion.y);
+                }
+            }
+        }
+        else if (strstr(buffer_recepcion, "ENEMY|DEBUG|LIANAS") != NULL) {
+            // Comando para debug de lianas
+            DebugLianas(&gestorEnemigos);
+        }
+    }
+}
         
         // ===== ACTUALIZAR ENEMIGOS (FUERA DEL BLOQUE DE RECEPCIÓN) =====
         ActualizarEnemigos(&gestorEnemigos, GetFrameTime());

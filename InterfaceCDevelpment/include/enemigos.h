@@ -5,12 +5,12 @@
 #include "mapa.h"
 
 #define MAX_ENEMIGOS 10
-#define MAX_LIANAS 20  // Máximo número de lianas identificadas
+#define MAX_LIANAS 20
 #define ALTO_PANTALLA 800
 
 typedef enum {
-    COCODRILO_AZUL,
-    COCODRILO_ROJO
+    COCODRILO_AZUL = 1,  // <--- Cambiado para coincidir con Java (1 = Azul)
+    COCODRILO_ROJO = 2   // <--- Cambiado para coincidir con Java (2 = Rojo)
 } TipoEnemigo;
 
 typedef struct {
@@ -27,13 +27,12 @@ typedef struct {
     float tiempoEspera;
 } Enemigo;
 
-// Estructura para identificar lianas
 typedef struct {
-    int id;           // ID fácil (1, 2, 3...)
-    int tileX;        // Coordenada X en tiles
-    int tileY_inicio; // Y inicial de la liana
-    int tileY_fin;    // Y final de la liana
-    float x_pos;      // Posición X en píxeles
+    int id;
+    int tileX;
+    int tileY_inicio;
+    int tileY_fin;
+    float x_pos;
 } LianaInfo;
 
 typedef struct {
@@ -42,12 +41,17 @@ typedef struct {
     int cantidad_enemigos;
     int cantidad_lianas;
     Mapa* mapa;
+    int proximo_id;  // <--- NUEVO: Para IDs automáticos
 } GestorEnemigos;
 
 // Funciones principales
 void InicializarEnemigos(GestorEnemigos* gestor, Mapa* mapa);
 int CrearEnemigo(GestorEnemigos* gestor, int id, TipoEnemigo tipo, float x, float y);
 int CrearEnemigoEnLiana(GestorEnemigos* gestor, int id, TipoEnemigo tipo, int lianaID);
+
+// NUEVA FUNCIÓN PARA JAVA
+int CrearEnemigoDesdeJava(GestorEnemigos* gestor, int tipoEnemigo, int lianaID);  // <--- NUEVA
+
 void EliminarEnemigo(GestorEnemigos* gestor, int id);
 void ActualizarEnemigos(GestorEnemigos* gestor, float deltaTime);
 void DibujarEnemigos(GestorEnemigos* gestor);
@@ -66,6 +70,7 @@ void ActualizarCocodriloRojo(Enemigo* enemigo, GestorEnemigos* gestor, float del
 
 // Utilidades
 int HayLianaEnPosicion(GestorEnemigos* gestor, float x, float y);
+int BuscarLianaCercana(GestorEnemigos* gestor, float x, float y, float rango);
 int BuscarLianaCercanaID(GestorEnemigos* gestor, float x, float y, float rango);
 float ObtenerPosicionXLiana(GestorEnemigos* gestor, int lianaIndex);
 
