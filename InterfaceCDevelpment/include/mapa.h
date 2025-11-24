@@ -3,37 +3,32 @@
 
 #include "C:/msys64/mingw64/include/raylib.h"
 
-// Definicion de tipos de tiles
+// Definir TileType aquí
 typedef enum {
-    tile_vacio = 0,
-    tile_suelo = 1,
-    tile_liana = 2,
-    tile_peligro = 3,
-    tile_meta = 4
+    tile_vacio,
+    tile_suelo, 
+    tile_liana,
+    tile_peligro,
+    tile_meta
 } TileType;
 
-//Estructura del mapa
-typedef struct 
-{
-    int **tiles;  //matriz de tiles
-    int ancho; //Ancho en tiles
-    int alto; // alto en tiles
-    int tileSize; //tamaño de cada tile en pixeles
-    Texture2D fondo; //fondo del juego
-
+// Definir estructura Mapa completamente
+typedef struct Mapa {
+    int ancho;
+    int alto;
+    int tileSize;
+    int** tiles;
+    Texture2D fondo;
 } Mapa;
 
-//Funciones publicas
-Mapa* CrearMapa(int ancho, int alto, int tilesize); //Recibe 3 numeros para formar el mapa del juego
+// Funciones del mapa
+Mapa* CrearMapa(int ancho, int alto, int tileSize);
 void LiberarMapa(Mapa *mapa);
-void DibujarMapa(Mapa *mapa);
 void CargarFondo(Mapa *mapa, const char *rutaFondo);
+void DibujarMapa(Mapa *mapa);
 int GetTile(Mapa *mapa, int x, int y);
 void SetTile(Mapa *mapa, int x, int y, TileType tipo);
-
-//Funcion para crear un mapa d eejemplo
 void CrearMapaEjemplo(Mapa *mapa);
-
 int HayTileDebajo(Mapa *mapa, float x, float y, int ancho, int alto);
 int HayAguaDebajo(Mapa *mapa, float x, float y, int ancho, int alto);
 int HayLiana(Mapa *mapa, float x, float y, int ancho, int alto);

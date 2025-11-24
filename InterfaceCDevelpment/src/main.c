@@ -1,11 +1,16 @@
 #include "C:/msys64/mingw64/include/raylib.h"
 #include "mapa.h"
 #include "socket_client.h"
+#include "enemigos.h"
 #include <stdio.h>
+#include <string.h>  // <--- AÑADIR ESTO
 
 #define ANCHO_PANTALLA 1200
 #define ALTO_PANTALLA 800
 #define TILE_SIZE 17
+
+// Declarar global (correcto)
+GestorEnemigos gestorEnemigos;
 
 int main(void) {
     // Inicializar ventana
@@ -14,7 +19,7 @@ int main(void) {
     
     printf("=== INICIANDO DEBUG ===\n");
     printf("Pantalla: %dx%d, Tile: %d\n", ANCHO_PANTALLA, ALTO_PANTALLA, TILE_SIZE);
-    
+
     // ===== CONEXIÓN AL SERVIDOR =====
     printf("=== Conectando al servidor ===\n");
     bool conectado = false;
@@ -51,6 +56,15 @@ int main(void) {
     CrearMapaEjemplo(mapa);
     printf("Mapa ejemplo creado\n");
     
+    // ===== INICIALIZAR SISTEMA DE ENEMIGOS ===== <--- PRIMERO INICIALIZAR
+    InicializarEnemigos(&gestorEnemigos, mapa);
+
+    // ===== CREAR ENEMIGOS DE PRUEBA (TEMPORAL) ===== <--- DESPUÉS CREAR ENEMIGOS
+    printf("=== Creando enemigos de prueba ===\n");
+    CrearEnemigoEnLiana(&gestorEnemigos, 1, COCODRILO_AZUL, 1); // Liana ID 1
+    CrearEnemigoEnLiana(&gestorEnemigos, 2, COCODRILO_ROJO, 2); // Liana ID 2  
+    CrearEnemigoEnLiana(&gestorEnemigos, 3, COCODRILO_AZUL, 3); // Liana ID 3
+    
     // --- VARIABLES DEL JUGADOR ---
     Vector2 cuadradoPos = {50, 100};
     int cuadradoSize = 50;
@@ -66,7 +80,7 @@ int main(void) {
     // Variables para comunicación
     char buffer_recepcion[4096];
     bool movimientoEnviado = false;
-    
+
     printf("=== INICIANDO BUCLE ===\n");
     
     // Bucle principal
@@ -76,9 +90,28 @@ int main(void) {
             int bytes = recibir_mensaje(buffer_recepcion, sizeof(buffer_recepcion));
             if (bytes > 0) {
                 printf("[Servidor]: %s\n", buffer_recepcion);
+                
+                // ===== PROCESAR COMANDOS DE ENEMIGOS DEL SERVIDOR =====
+                if (strstr(buffer_recepcion, "ENEMY|CREATE|") != NULL) {
+                    // Formato: ENEMY|CREATE|ID|TIPO|X|Y
+                    int id, tipo, x, y;
+                    if (sscanf(buffer_recepcion, "ENEMY|CREATE|%d|%d|%d|%d", &id, &tipo, &x, &y) == 4) {
+                        CrearEnemigo(&gestorEnemigos, id, (TipoEnemigo)tipo, (float)x, (float)y);
+                    }
+                }
+                else if (strstr(buffer_recepcion, "ENEMY|REMOVE|") != NULL) {
+                    // Formato: ENEMY|REMOVE|ID
+                    int id;
+                    if (sscanf(buffer_recepcion, "ENEMY|REMOVE|%d", &id) == 1) {
+                        EliminarEnemigo(&gestorEnemigos, id);
+                    }
+                }
                 // TODO: Parsear GAMESTATE y actualizar posiciones de otros jugadores
             }
         }
+        
+        // ===== ACTUALIZAR ENEMIGOS (FUERA DEL BLOQUE DE RECEPCIÓN) =====
+        ActualizarEnemigos(&gestorEnemigos, GetFrameTime());
         
         // --- MOVIMIENTO HORIZONTAL CON FLECHAS ---
         movimientoEnviado = false;
@@ -191,6 +224,22 @@ int main(void) {
             // Dibujar mapa
             DibujarMapa(mapa);
             
+            // Dibujar enemigos
+            DibujarEnemigos(&gestorEnemigos);
+
+            // Debug de enemigos
+    DrawText(TextFormat("Enemigos: %d/%d", gestorEnemigos.cantidad_enemigos, MAX_ENEMIGOS), 10, 200, 15, PURPLE);
+
+    // Dibujar hitboxes de enemigos (debug visual)
+    for (int i = 0; i < MAX_ENEMIGOS; i++) {
+        if (gestorEnemigos.enemigos[i].activo) {
+            DrawRectangleLinesEx(gestorEnemigos.enemigos[i].hitbox, 2, RED);
+            DrawText(TextFormat("E%d", gestorEnemigos.enemigos[i].id), 
+                gestorEnemigos.enemigos[i].posicion.x, 
+                gestorEnemigos.enemigos[i].posicion.y - 20, 10, WHITE);
+    }
+}
+
             // Dibujar cuadrado (color según estado)
             Color colorCuadrado = BLUE;
             if (conectado && esta_conectado()) colorCuadrado = GREEN;
@@ -218,8 +267,11 @@ int main(void) {
             DrawText(TextFormat("Sujetando liana: %s", sujetandoLiana ? "SI" : "NO"), 10, 115, 15, sujetandoLiana ? GREEN : RED);
             DrawText(TextFormat("En agua: %s", enAgua ? "SI" : "NO"), 10, 135, 15, enAgua ? BLUE : RED);
             
+            // Información de enemigos
+            DrawText(TextFormat("Enemigos activos: %d", gestorEnemigos.cantidad_enemigos), 10, 175, 15, PURPLE);
+            
             // Controles
-            DrawText("Flechas: mover | ESPACIO: saltar | Z: agarrar/soltar liana", 10, 155, 12, RED);
+            DrawText("Flechas: mover | ESPACIO: saltar | Z: agarrar/soltar liana", 10, 195, 12, RED);
             DrawText("Presiona ESC para salir", 10, ALTO_PANTALLA - 25, 15, WHITE);
             
         EndDrawing();
