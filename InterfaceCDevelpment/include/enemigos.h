@@ -42,8 +42,9 @@ typedef struct {
     int cantidad_lianas;
     Mapa* mapa;
     int proximo_id;
-    Texture2D tex_cocodrilo_azul;  // <--- NUEVO: Textura para cocodrilo azul
-    Texture2D tex_cocodrilo_rojo;  // <--- NUEVO: Textura para cocodrilo rojo
+    Texture2D tex_cocodrilo_azul;  
+    Texture2D tex_cocodrilo_rojo; 
+    int nivel_actual;
 } GestorEnemigos;
 
 // Funciones principales
@@ -75,5 +76,8 @@ int HayLianaEnPosicion(GestorEnemigos* gestor, float x, float y);
 int BuscarLianaCercana(GestorEnemigos* gestor, float x, float y, float rango);
 int BuscarLianaCercanaID(GestorEnemigos* gestor, float x, float y, float rango);
 float ObtenerPosicionXLiana(GestorEnemigos* gestor, int lianaIndex);
+
+float CalcularVelocidadSegunNivel(float velocidadBase, int nivel);
+void CambiarNivelEnemigos(GestorEnemigos* gestor, int nuevoNivel);
 
 #endif

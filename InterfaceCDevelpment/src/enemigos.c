@@ -5,16 +5,21 @@
 #include <string.h>
 
 // Velocidades de los enemigos
+#define VELOCIDAD_BASE 1.0f
 #define VELOCIDAD_COCODRILO_AZUL 2.0f
 #define VELOCIDAD_COCODRILO_ROJO 1.5f
-#define TIEMPO_CAMBIO_DIRECCION 3.0f
 #define RANGO_BUSQUEDA_LIANA 100.0f
+
+float CalcularVelocidadSegunNivel(float velocidadBase, int nivel) {
+    return velocidadBase * (1.0f + (nivel * 0.25f));
+}
 
 void InicializarEnemigos(GestorEnemigos* gestor, Mapa* mapa) {
     gestor->cantidad_enemigos = 0;
     gestor->cantidad_lianas = 0;
     gestor->mapa = mapa;
     gestor->proximo_id = 1;
+    gestor->nivel_actual = 1;
     
     // Inicializar texturas
     gestor->tex_cocodrilo_azul = (Texture2D){0};
@@ -38,8 +43,8 @@ void InicializarEnemigos(GestorEnemigos* gestor, Mapa* mapa) {
     // Identificar lianas en el mapa
     IdentificarLianasEnMapa(gestor);
     
-    printf("[Enemigos] Gestor inicializado. Enemigos: %d, Lianas: %d, Proximo ID: %d\n", 
-           gestor->cantidad_enemigos, gestor->cantidad_lianas, gestor->proximo_id);
+    printf("[Enemigos] Gestor inicializado. Enemigos: %d, Lianas: %d, Proximo ID: %d, Nivel: %d\n", 
+           gestor->cantidad_enemigos, gestor->cantidad_lianas, gestor->proximo_id, gestor->nivel_actual);
 }
 
 // ===== SISTEMA DE TEXTURAS =====
@@ -348,6 +353,9 @@ void ActualizarEnemigos(GestorEnemigos* gestor, float deltaTime) {
 void ActualizarCocodriloAzul(Enemigo* enemigo, GestorEnemigos* gestor, float deltaTime) {
     if (!gestor->mapa) return;
     
+    // CALCULAR VELOCIDAD ACTUAL SEGÚN NIVEL
+    float velocidadActual = CalcularVelocidadSegunNivel(VELOCIDAD_COCODRILO_AZUL, gestor->nivel_actual);
+
     if (!enemigo->enLiana) {
         int lianaID = BuscarLianaCercanaID(gestor, enemigo->posicion.x, enemigo->posicion.y, RANGO_BUSQUEDA_LIANA);
         
@@ -358,8 +366,9 @@ void ActualizarCocodriloAzul(Enemigo* enemigo, GestorEnemigos* gestor, float del
                 enemigo->posicion.y = liana->tileY_inicio * gestor->mapa->tileSize;
                 enemigo->enLiana = 1;
                 enemigo->lianaActual = lianaID;
-                enemigo->velocidad = (Vector2){0, VELOCIDAD_COCODRILO_AZUL};
-                printf("[CocodriloAzul] ID %d se posicionó en liana %d\n", enemigo->id, lianaID);
+                enemigo->velocidad = (Vector2){0, velocidadActual}; // USAR VELOCIDAD CALCULADA
+                printf("[CocodriloAzul] ID %d se posicionó en liana %d - Velocidad: %.2f (Nivel %d)\n", 
+                       enemigo->id, lianaID, velocidadActual, gestor->nivel_actual);
             }
         } else {
             enemigo->tiempoEspera += deltaTime;
@@ -367,10 +376,12 @@ void ActualizarCocodriloAzul(Enemigo* enemigo, GestorEnemigos* gestor, float del
                 enemigo->posicion.x = (float)(rand() % (gestor->mapa->ancho * gestor->mapa->tileSize));
                 enemigo->tiempoEspera = 0.0f;
             }
+            enemigo->velocidad.x = 0;
+            enemigo->velocidad.y = velocidadActual;  // USAR VELOCIDAD CALCULADA
         }
     } else {
         enemigo->velocidad.x = 0;
-        enemigo->velocidad.y = VELOCIDAD_COCODRILO_AZUL;
+        enemigo->velocidad.y = velocidadActual;  // USAR VELOCIDAD CALCULADA
         
         LianaInfo* lianaActual = ObtenerLianaPorID(gestor, enemigo->lianaActual);
         int llegoAlFinal = 0;
@@ -413,6 +424,9 @@ void ActualizarCocodriloAzul(Enemigo* enemigo, GestorEnemigos* gestor, float del
 void ActualizarCocodriloRojo(Enemigo* enemigo, GestorEnemigos* gestor, float deltaTime) {
     if (!gestor->mapa) return;
     
+    // CALCULAR VELOCIDAD ACTUAL SEGÚN NIVEL
+    float velocidadActual = CalcularVelocidadSegunNivel(VELOCIDAD_COCODRILO_ROJO, gestor->nivel_actual);
+    
     LianaInfo* lianaActual = ObtenerLianaPorID(gestor, enemigo->lianaActual);
     int enLianaActual = 0;
     
@@ -436,7 +450,8 @@ void ActualizarCocodriloRojo(Enemigo* enemigo, GestorEnemigos* gestor, float del
                 enemigo->enLiana = 1;
                 enemigo->lianaActual = lianaID;
                 enemigo->direccion = -1;
-                printf("[CocodriloRojo] ID %d se reubicó en liana %d\n", enemigo->id, lianaID);
+                printf("[CocodriloRojo] ID %d se reubicó en liana %d - Velocidad: %.2f (Nivel %d)\n", 
+                       enemigo->id, lianaID, velocidadActual, gestor->nivel_actual);
             }
         } else {
             enemigo->velocidad = (Vector2){0, 0};
@@ -485,7 +500,7 @@ void ActualizarCocodriloRojo(Enemigo* enemigo, GestorEnemigos* gestor, float del
         }
     }
     
-    enemigo->velocidad.y = VELOCIDAD_COCODRILO_ROJO * enemigo->direccion;
+    enemigo->velocidad.y = velocidadActual * enemigo->direccion;  // USAR VELOCIDAD CALCULADA
     enemigo->velocidad.x = 0;
     
     enemigo->posicion.y += enemigo->velocidad.y;
@@ -545,6 +560,38 @@ int BuscarLianaCercana(GestorEnemigos* gestor, float x, float y, float rango) {
 float ObtenerPosicionXLiana(GestorEnemigos* gestor, int lianaIndex) {
     if (!gestor->mapa) return 0;
     return lianaIndex * gestor->mapa->tileSize;
+}
+
+void CambiarNivelEnemigos(GestorEnemigos* gestor, int nuevoNivel) {
+    gestor->nivel_actual = nuevoNivel;
+    printf("[Enemigos] Nivel cambiado a: %d\n", nuevoNivel);
+    
+    // Actualizar velocidades de todos los enemigos activos
+    for (int i = 0; i < MAX_ENEMIGOS; i++) {
+        if (gestor->enemigos[i].activo) {
+            float velocidadActual;
+            switch (gestor->enemigos[i].tipo) {
+                case COCODRILO_AZUL:
+                    velocidadActual = CalcularVelocidadSegunNivel(VELOCIDAD_COCODRILO_AZUL, nuevoNivel);
+                    break;
+                case COCODRILO_ROJO:
+                    velocidadActual = CalcularVelocidadSegunNivel(VELOCIDAD_COCODRILO_ROJO, nuevoNivel);
+                    break;
+                default:
+                    velocidadActual = 0;
+            }
+            
+            // Aplicar la nueva velocidad manteniendo la dirección
+            if (gestor->enemigos[i].tipo == COCODRILO_ROJO) {
+                gestor->enemigos[i].velocidad.y = velocidadActual * gestor->enemigos[i].direccion;
+            } else {
+                gestor->enemigos[i].velocidad.y = velocidadActual;
+            }
+            
+            printf("[Enemigos] Enemigo ID %d - Nueva velocidad: %.2f\n", 
+                   gestor->enemigos[i].id, velocidadActual);
+        }
+    }
 }
 
 // ===== SISTEMA DE IDENTIFICACIÓN DE LIANAS =====
