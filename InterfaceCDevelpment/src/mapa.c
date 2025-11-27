@@ -259,7 +259,7 @@ void CrearMapaEjemplo(Mapa *mapa) {
         } 
         
         for (int y = mapa->alto - 32; y <= mapa->alto - 10; y++) { // Liana 2
-            SetTile(mapa, 12, y, tile_liana);
+            SetTile(mapa, 11, y, tile_liana);
         }
 
         for (int y = mapa->alto - 15; y <= mapa->alto - 8; y++) { // Liana 3 (abajo de plataforma)
@@ -283,7 +283,7 @@ void CrearMapaEjemplo(Mapa *mapa) {
         }
 
         for (int y = mapa->alto - 31; y <= mapa->alto - 16; y++) { // Liana 8
-            SetTile(mapa, 51, y, tile_liana);
+            SetTile(mapa, 50, y, tile_liana);
         }
 
         for (int y = mapa->alto - 18; y <= mapa->alto - 13; y++) { // Liana 9 (abajo de plataforma izq)

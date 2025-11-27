@@ -1,11 +1,54 @@
 #include "C:/msys64/mingw64/include/raylib.h"
 #include "mapa.h"
 #include "socket_client.h"
+#include "enemigos.h"
 #include <stdio.h>
+#include <string.h>  // <--- AÑADIR ESTO
 
 #define ANCHO_PANTALLA 1200
 #define ALTO_PANTALLA 800
 #define TILE_SIZE 17
+#define VIDA_MAXIMA 3
+#define VELOCIDAD_BASE_ENEMIGOS 1.0f
+
+// Declarar global (correcto)
+GestorEnemigos gestorEnemigos;
+
+// [AGREGAR funciones nuevas]
+int VerificarColisionConEnemigos(GestorEnemigos* gestor, float x, float y, int ancho, int alto) {
+    Rectangle jugadorRect = {x, y, ancho, alto};
+    
+    for (int i = 0; i < MAX_ENEMIGOS; i++) {
+        if (gestor->enemigos[i].activo) {
+            if (CheckCollisionRecs(jugadorRect, gestor->enemigos[i].hitbox)) {
+                return gestor->enemigos[i].id;
+            }
+        }
+    }
+    return -1; // No hay colisión
+}
+
+int VerificarMeta(Mapa *mapa, float x, float y, int ancho, int alto) {
+    if (!mapa) return 0;
+    
+    // Verificar varios puntos del jugador
+    float puntosX[] = {x, x + ancho * 0.5f, x + ancho - 1};
+    float puntosY[] = {y, y + alto * 0.5f, y + alto - 1};
+    
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            int tileX = (int)(puntosX[i] / mapa->tileSize);
+            int tileY = (int)(puntosY[j] / mapa->tileSize);
+            
+            if (tileX >= 0 && tileX < mapa->ancho && tileY >= 0 && tileY < mapa->alto) {
+                if (GetTile(mapa, tileX, tileY) == tile_meta) {
+                    return 1;
+                }
+            }
+        }
+    }
+    return 0;
+}
 
 int main(void) {
     // Inicializar ventana
@@ -14,7 +57,7 @@ int main(void) {
     
     printf("=== INICIANDO DEBUG ===\n");
     printf("Pantalla: %dx%d, Tile: %d\n", ANCHO_PANTALLA, ALTO_PANTALLA, TILE_SIZE);
-    
+
     // ===== CONEXIÓN AL SERVIDOR =====
     printf("=== Conectando al servidor ===\n");
     bool conectado = false;
@@ -51,6 +94,35 @@ int main(void) {
     CrearMapaEjemplo(mapa);
     printf("Mapa ejemplo creado\n");
     
+    // ===== SISTEMA DE NIVELES Y VIDAS =====
+    int nivel = 1;
+    int salud = VIDA_MAXIMA;
+    bool juegoActivo = true;
+    bool gameOver = false;
+    int mostrarMensajeNivel = 0;
+    float tiempoMensaje = 0.0f;
+    
+    // ===== INICIALIZAR SISTEMA DE ENEMIGOS =====
+    InicializarEnemigos(&gestorEnemigos, mapa);
+
+    /////////////////////////////////////DEBUG////////////////////////////////////////////
+
+    // ===== CREAR ENEMIGOS DE PRUEBA (TEMPORAL) =====
+    printf("=== Creando enemigos de prueba ===\n");
+    CrearEnemigoEnLiana(&gestorEnemigos, 1, COCODRILO_AZUL, 1); // Liana ID 1
+    CrearEnemigoEnLiana(&gestorEnemigos, 2, COCODRILO_AZUL, 2); // Liana ID 2  
+    CrearEnemigoEnLiana(&gestorEnemigos, 3, COCODRILO_AZUL, 3); // Liana ID 3
+    CrearEnemigoEnLiana(&gestorEnemigos, 4, COCODRILO_AZUL, 4); // Liana ID 1
+    CrearEnemigoEnLiana(&gestorEnemigos, 5, COCODRILO_AZUL, 5); // Liana ID 2  
+    CrearEnemigoEnLiana(&gestorEnemigos, 6, COCODRILO_AZUL, 6); // Liana ID 3
+    CrearEnemigoEnLiana(&gestorEnemigos, 7, COCODRILO_ROJO, 7); // Liana ID 1
+    CrearEnemigoEnLiana(&gestorEnemigos, 8, COCODRILO_AZUL, 8); // Liana ID 2  
+    CrearEnemigoEnLiana(&gestorEnemigos, 9, COCODRILO_AZUL, 11); // Liana ID 3
+    CrearEnemigoEnLiana(&gestorEnemigos, 10, COCODRILO_ROJO, 12); // Liana ID 1
+
+    /////////////////////////////////////DEBUG////////////////////////////////////////////
+
+    
     // --- VARIABLES DEL JUGADOR ---
     Vector2 cuadradoPos = {50, 100};
     int cuadradoSize = 50;
@@ -66,17 +138,139 @@ int main(void) {
     // Variables para comunicación
     char buffer_recepcion[4096];
     bool movimientoEnviado = false;
-    
+
     printf("=== INICIANDO BUCLE ===\n");
     
     // Bucle principal
     while (!WindowShouldClose()) {
         // ===== RECIBIR MENSAJES DEL SERVIDOR =====
         if (conectado && esta_conectado()) {
-            int bytes = recibir_mensaje(buffer_recepcion, sizeof(buffer_recepcion));
-            if (bytes > 0) {
-                printf("[Servidor]: %s\n", buffer_recepcion);
-                // TODO: Parsear GAMESTATE y actualizar posiciones de otros jugadores
+    int bytes = recibir_mensaje(buffer_recepcion, sizeof(buffer_recepcion));
+    if (bytes > 0) {
+        printf("[Servidor]: %s\n", buffer_recepcion);
+        
+        // ===== PROCESAR COMANDOS DE ENEMIGOS DEL SERVIDOR =====
+        if (strstr(buffer_recepcion, "ENEMY|CREATE|") != NULL) {
+            // Formato: ENEMY|CREATE|TIPO|LIANA
+            int tipo, liana;
+            if (sscanf(buffer_recepcion, "ENEMY|CREATE|%d|%d", &tipo, &liana) == 2) {
+                int idCreado = CrearEnemigoDesdeJava(&gestorEnemigos, tipo, liana);
+                if (idCreado != -1) {
+                    printf("[Java] Enemigo creado exitosamente - ID: %d\n", idCreado);
+                } else {
+                    printf("[Java] Error al crear enemigo\n");
+                }
+            } else {
+                printf("[Java] Formato inválido. Usar: ENEMY|CREATE|TIPO|LIANA\n");
+            }
+        }
+        else if (strstr(buffer_recepcion, "ENEMY|REMOVE|") != NULL) {
+            // Formato: ENEMY|REMOVE|ID
+            int id;
+            if (sscanf(buffer_recepcion, "ENEMY|REMOVE|%d", &id) == 1) {
+                EliminarEnemigo(&gestorEnemigos, id);
+                printf("[Java] Comando recibido: Eliminar enemigo ID %d\n", id);
+            }
+        }
+        else if (strstr(buffer_recepcion, "ENEMY|LIST") != NULL) {
+            // Comando para listar enemigos activos
+            printf("[Java] Enemigos activos: %d\n", gestorEnemigos.cantidad_enemigos);
+            for (int i = 0; i < MAX_ENEMIGOS; i++) {
+                if (gestorEnemigos.enemigos[i].activo) {
+                    printf("  - ID: %d, Tipo: %d, Liana: %d, Pos: (%.0f, %.0f)\n",
+                           gestorEnemigos.enemigos[i].id,
+                           gestorEnemigos.enemigos[i].tipo,
+                           gestorEnemigos.enemigos[i].lianaActual,
+                           gestorEnemigos.enemigos[i].posicion.x,
+                           gestorEnemigos.enemigos[i].posicion.y);
+                }
+            }
+        }
+        else if (strstr(buffer_recepcion, "ENEMY|DEBUG|LIANAS") != NULL) {
+            // Comando para debug de lianas
+            DebugLianas(&gestorEnemigos);
+        }
+    }
+}
+        
+        // ===== ACTUALIZAR ENEMIGOS (FUERA DEL BLOQUE DE RECEPCIÓN) =====
+        ActualizarEnemigos(&gestorEnemigos, GetFrameTime());
+        
+        // ===== SISTEMA DE COLISIONES Y VIDAS =====
+        if (juegoActivo && !gameOver) {
+            // Verificar colisión con enemigos
+            int enemigoColisionado = VerificarColisionConEnemigos(&gestorEnemigos, cuadradoPos.x, cuadradoPos.y, cuadradoSize, cuadradoSize);
+            if (enemigoColisionado != -1) {
+                salud--;
+                printf("[Juego] ¡Colisión con enemigo! Salud: %d/%d\n", salud, VIDA_MAXIMA);
+                
+                // Reposicionar jugador
+                cuadradoPos = (Vector2){50, 100};
+                velocidadY = 0;
+                sujetandoLiana = false;
+                
+                if (salud <= 0) {
+                    gameOver = true;
+                    printf("[Juego] ¡GAME OVER!\n");
+                }
+                
+                if (conectado && esta_conectado()) {
+                    char mensaje[50];
+                    snprintf(mensaje, sizeof(mensaje), "ACTION|1|HIT|%d", salud);
+                    enviar_mensaje(mensaje);
+                }
+            }
+            
+            // Verificar si llegó a la meta
+            if (VerificarMeta(mapa, cuadradoPos.x, cuadradoPos.y, cuadradoSize, cuadradoSize)) {
+                nivel++;
+                salud = VIDA_MAXIMA; // Recuperar toda la vida al pasar nivel
+                CambiarNivelEnemigos(&gestorEnemigos, nivel);
+                mostrarMensajeNivel = nivel - 1;
+                tiempoMensaje = 0.0f;
+                
+                printf("[Juego] ¡NIVEL %d COMPLETADO! Pasando al nivel %d\n", nivel-1, nivel);
+                
+                // Reposicionar jugador para nuevo nivel
+                cuadradoPos = (Vector2){50, 100};
+                velocidadY = 0;
+                sujetandoLiana = false;
+                
+                if (conectado && esta_conectado()) {
+                    char mensaje[50];
+                    snprintf(mensaje, sizeof(mensaje), "ACTION|1|LEVEL_UP|%d", nivel);
+                    enviar_mensaje(mensaje);
+                }
+            }
+        }
+
+        // ===== REINICIAR JUEGO CON R =====
+        if (gameOver && IsKeyPressed(KEY_R)) {
+            nivel = 1;
+            salud = VIDA_MAXIMA;
+            gameOver = false;
+            cuadradoPos = (Vector2){50, 100};
+            velocidadY = 0;
+            sujetandoLiana = false;
+            CambiarNivelEnemigos(&gestorEnemigos, nivel);
+            
+            // Eliminar todos los enemigos existentes
+            for (int i = 0; i < MAX_ENEMIGOS; i++) {
+                if (gestorEnemigos.enemigos[i].activo) {
+                    gestorEnemigos.enemigos[i].activo = 0;
+                }
+            }
+            gestorEnemigos.cantidad_enemigos = 0;
+            
+            printf("[Juego] Juego reiniciado\n");
+        }
+        
+        // Actualizar tiempo del mensaje de nivel
+        if (mostrarMensajeNivel > 0) {
+            tiempoMensaje += GetFrameTime();
+            if (tiempoMensaje > 3.0f) {
+                mostrarMensajeNivel = 0;
+                tiempoMensaje = 0.0f;
             }
         }
         
@@ -191,6 +385,22 @@ int main(void) {
             // Dibujar mapa
             DibujarMapa(mapa);
             
+            // Dibujar enemigos
+            DibujarEnemigos(&gestorEnemigos);
+
+            // Debug de enemigos
+    DrawText(TextFormat("Enemigos: %d/%d", gestorEnemigos.cantidad_enemigos, MAX_ENEMIGOS), 10, 200, 15, PURPLE);
+
+    // Dibujar hitboxes de enemigos (debug visual)
+    for (int i = 0; i < MAX_ENEMIGOS; i++) {
+        if (gestorEnemigos.enemigos[i].activo) {
+            DrawRectangleLinesEx(gestorEnemigos.enemigos[i].hitbox, 2, RED);
+            DrawText(TextFormat("E%d", gestorEnemigos.enemigos[i].id), 
+                gestorEnemigos.enemigos[i].posicion.x, 
+                gestorEnemigos.enemigos[i].posicion.y - 20, 10, WHITE);
+    }
+}
+
             // Dibujar cuadrado (color según estado)
             Color colorCuadrado = BLUE;
             if (conectado && esta_conectado()) colorCuadrado = GREEN;
@@ -218,8 +428,30 @@ int main(void) {
             DrawText(TextFormat("Sujetando liana: %s", sujetandoLiana ? "SI" : "NO"), 10, 115, 15, sujetandoLiana ? GREEN : RED);
             DrawText(TextFormat("En agua: %s", enAgua ? "SI" : "NO"), 10, 135, 15, enAgua ? BLUE : RED);
             
+            // Información de nivel y salud
+            DrawText(TextFormat("Nivel: %d", nivel), 10, 155, 15, YELLOW);
+            DrawText(TextFormat("Salud: %d/%d", salud, VIDA_MAXIMA), 10, 175, 15, 
+                    (salud == 3) ? GREEN : (salud == 2) ? YELLOW : RED);
+            
+            // Información de enemigos
+            DrawText(TextFormat("Enemigos activos: %d", gestorEnemigos.cantidad_enemigos), 10, 195, 15, PURPLE);
+            
+            // Mensaje de nivel completado
+            if (mostrarMensajeNivel > 0) {
+                DrawText(TextFormat("¡NIVEL %d COMPLETADO!", mostrarMensajeNivel), 
+                        ANCHO_PANTALLA/2 - 150, 50, 30, GREEN);
+            }
+            
+            // Mensaje de Game Over
+            if (gameOver) {
+                DrawRectangle(0, 0, ANCHO_PANTALLA, ALTO_PANTALLA, (Color){0, 0, 0, 200});
+                DrawText("¡GAME OVER!", ANCHO_PANTALLA/2 - 150, ALTO_PANTALLA/2 - 50, 40, RED);
+                DrawText(TextFormat("Alcanzaste el nivel %d", nivel), ANCHO_PANTALLA/2 - 120, ALTO_PANTALLA/2, 20, WHITE);
+                DrawText("Presiona R para reiniciar", ANCHO_PANTALLA/2 - 100, ALTO_PANTALLA/2 + 50, 20, GREEN);
+            }
+            
             // Controles
-            DrawText("Flechas: mover | ESPACIO: saltar | Z: agarrar/soltar liana", 10, 155, 12, RED);
+            DrawText("Flechas: mover | ESPACIO: saltar | Z: agarrar/soltar liana", 10, 215, 12, RED);
             DrawText("Presiona ESC para salir", 10, ALTO_PANTALLA - 25, 15, WHITE);
             
         EndDrawing();
@@ -229,6 +461,7 @@ int main(void) {
     if (conectado) {
         desconectar_servidor();
     }
+    LiberarTexturasEnemigos(&gestorEnemigos);
     LiberarMapa(mapa);
     CloseWindow();
     
