@@ -2,7 +2,6 @@
 *.exe
 *.o
 *.class
-*.dll
 
 # Directorios de compilación
 GameServer/bin/
