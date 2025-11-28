@@ -3,7 +3,9 @@
 #include "socket_client.h"
 #include "enemigos.h"
 #include <stdio.h>
-#include <string.h>  // <--- AÑADIR ESTO
+#include <string.h>
+#include "fruta.h"
+
 
 #define ANCHO_PANTALLA 1200
 #define ALTO_PANTALLA 800
@@ -13,6 +15,8 @@
 
 // Declarar global (correcto)
 GestorEnemigos gestorEnemigos;
+GestorFrutas gestorFrutas;
+
 
 // [AGREGAR funciones nuevas]
 int VerificarColisionConEnemigos(GestorEnemigos* gestor, float x, float y, int ancho, int alto) {
@@ -104,6 +108,8 @@ int main(void) {
     
     // ===== INICIALIZAR SISTEMA DE ENEMIGOS =====
     InicializarEnemigos(&gestorEnemigos, mapa);
+    InicializarFrutas(&gestorFrutas);
+
 
     /////////////////////////////////////DEBUG////////////////////////////////////////////
 
@@ -150,12 +156,17 @@ int main(void) {
 
         if (strncmp(buffer_recepcion, "FRUIT_CREATED", 13) == 0) {
             int vine, height, points;
-            if (sscanf(buffer_recepcion, "FRUIT_CREATED|%d|%d|%d", &vine, &height, &points) == 3) {
-                CrearEnemigoEnLiana(&gestorEnemigos, 1, COCODRILO_AZUL, vine); // Liana ID 1
+
+            if (sscanf(buffer_recepcion, "FRUIT_CREATED|%d|%d|%d",
+                    &vine, &height, &points) == 3) {
+
+                CrearFruta(&gestorFrutas, vine, height, points);
+
             } else {
-                printf("[Servidor] FRUIT_CREATED: formato inválido\n");
+                printf("[Servidor] FRUIT_CREATED formato inválido\n");
             }
         }
+
         
         // ===== PROCESAR COMANDOS DE ENEMIGOS DEL SERVIDOR =====
         if (strstr(buffer_recepcion, "ENEMY|CREATE|") != NULL) {
@@ -396,6 +407,8 @@ int main(void) {
             
             // Dibujar enemigos
             DibujarEnemigos(&gestorEnemigos);
+
+            DibujarFrutas(&gestorFrutas);
 
             // Debug de enemigos
     DrawText(TextFormat("Enemigos: %d/%d", gestorEnemigos.cantidad_enemigos, MAX_ENEMIGOS), 10, 200, 15, PURPLE);

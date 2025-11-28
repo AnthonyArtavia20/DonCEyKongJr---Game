@@ -411,7 +411,7 @@ protected void update(double delta, boolean crash) {
                     }
 
                     // Puedes permitir ingresar altura también si quieres:
-                    int height = 100;
+                    int height = 500;
                     int points = 500;
 
                     if (server.gameLogic != null) {
