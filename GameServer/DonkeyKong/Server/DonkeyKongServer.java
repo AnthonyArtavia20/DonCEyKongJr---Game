@@ -399,7 +399,7 @@ protected void update(double delta, boolean crash) {
                 }
                 else if (line.equals("cf")) {
                     // Pedir liana al usuario
-                    System.out.print("Ingrese la liana para la fruta (0-? según tu juego): ");
+                    System.out.print("Ingrese la liana para la fruta (1-9): ");
                     String inputVine = scanner.nextLine().trim();
 
                     int vine;
@@ -410,8 +410,39 @@ protected void update(double delta, boolean crash) {
                         continue;
                     }
 
-                    // Puedes permitir ingresar altura también si quieres:
-                    int height = 500;
+                    int height;
+                    
+                    if (vine == 1) {
+                        height = 500;
+                    }
+                    else if (vine == 2) {
+                        height = 400;
+                    }
+                    else if (vine == 3) {
+                        height = 450;
+                    }
+                    else if (vine == 4) {
+                        height = 300;
+                    }
+                    else if (vine == 5) {
+                        height = 350;
+                    }
+                    else if (vine == 6) {
+                        height = 400;
+                    }
+                    else if (vine == 7) {
+                        height = 450;
+                    }
+                    else if (vine == 8) {
+                        height = 200;
+                    }
+                    else if (vine == 9) {
+                        height = 550;
+                    }
+                    else {
+                        height = 300;
+                    }
+
                     int points = 500;
 
                     if (server.gameLogic != null) {
