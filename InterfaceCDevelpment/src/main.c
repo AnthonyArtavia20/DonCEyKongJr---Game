@@ -147,6 +147,16 @@ int main(void) {
         if (conectado && esta_conectado()) {
     int bytes = recibir_mensaje(buffer_recepcion, sizeof(buffer_recepcion));
     if (bytes > 0) {
+
+        if (strncmp(buffer_recepcion, "FRUIT_CREATED", 13) == 0) {
+            int vine, height, points;
+            if (sscanf(buffer_recepcion, "FRUIT_CREATED|%d|%d|%d", &vine, &height, &points) == 3) {
+                printf("[Servidor] FRUIT_CREATED -> vine=%d height=%d points=%d\n", vine, height, points);
+                CrearEnemigoEnLiana(&gestorEnemigos, 1, COCODRILO_AZUL, 1); // Liana ID 1
+            } else {
+                printf("[Servidor] FRUIT_CREATED: formato inválido\n");
+            }
+        }
         
         // ===== PROCESAR COMANDOS DE ENEMIGOS DEL SERVIDOR =====
         if (strstr(buffer_recepcion, "ENEMY|CREATE|") != NULL) {

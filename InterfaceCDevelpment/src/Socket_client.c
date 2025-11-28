@@ -107,6 +107,8 @@ int recibir_mensaje(char* buffer, int max_len) {
         buffer[bytes] = '\0';
         return bytes;
     }
+
+    
     
     return 0; // No hay datos
 }

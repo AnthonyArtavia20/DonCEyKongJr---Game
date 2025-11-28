@@ -75,15 +75,8 @@ protected void update(double delta, boolean crash) {
                 int enemyId = evt.getParamAsInt(1, -1);
                 int damage  = evt.getParamAsInt(2, 1);
 
-                System.out.println("  -> Tipo: ENEMY_HIT (cocodrilo)");
-                System.out.println("  -> playerId: " + playerId);
-                System.out.println("  -> enemyId: " + enemyId);
-                System.out.println("  -> damage: " + damage);
 
                 if (gameLogic != null) {
-                    System.out.println("  -> Llamando gameLogic.enemyHit(" + 
-                                        playerId + ", " + enemyId + ", " + damage + ")");
-                    // Debes implementar esto en GameLogic
                     gameLogic.enemyHit(playerId, enemyId, damage);
                 } else {
                     System.out.println("  -> gameLogic es NULL, no se puede procesar ENEMY_HIT.");
@@ -390,6 +383,7 @@ protected void update(double delta, boolean crash) {
         try (Scanner scanner = new Scanner(System.in)) {
             System.out.println("\nComandos:");
             System.out.println("  stats  - Mostrar estadísticas");
+            System.out.println("  CF - Crear Fruta");
             System.out.println("  quit   - Detener servidor");
             System.out.println();
             
@@ -402,6 +396,34 @@ protected void update(double delta, boolean crash) {
                     System.out.println(server.stats.toString());
                     System.out.println("Jugadores activos: " + server.playerCount);
                     System.out.println("Espectadores activos: " + server.spectatorCount);
+                }
+                else if (line.equals("cf")) {
+                    // Comando de prueba para crear una fruta en la vid 1, altura 100, 500 puntos
+                    int vine = 1;
+                    int height = 100;
+                    int points = 500;
+
+                    if (server.gameLogic != null) {
+
+                        // Crear fruta en la lógica del servidor
+                        server.gameLogic.createFruit(vine, height, points);
+
+                        // Enviar mensaje a TODOS los clientes conectados
+                        String msg = MessageProtocol.encode("FRUIT_CREATED",
+                                                            String.valueOf(vine),
+                                                            String.valueOf(height),
+                                                            String.valueOf(points));
+
+                        server.broadcast(msg);
+
+                        System.out.println("[SERVER CLI] Fruta creada y enviada a clientes:");
+                        System.out.println("  -> vine=" + vine);
+                        System.out.println("  -> height=" + height);
+                        System.out.println("  -> points=" + points);
+                    }
+                }
+                else {
+                    System.out.println("Comando desconocido: " + line);
                 }
             }
         }
