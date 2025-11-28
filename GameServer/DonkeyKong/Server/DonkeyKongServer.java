@@ -307,6 +307,20 @@ protected void update(double delta, boolean crash) {
                     sendTo(client, MessageProtocol.encode("ERROR", "INVALID_PARAMS"));
                 }
                 break;
+            
+            case "CREATE_CCA":
+                if (m.hasParams(4)) {
+                    int vine = m.getParamAsInt(1, -1);
+                    int height = m.getParamAsInt(2, -1);
+                    int points = m.getParamAsInt(3, 100);
+                    if (gameLogic != null) {
+                        gameLogic.createFruit(vine, height, points);
+                        sendTo(client, MessageProtocol.encode("OK", "CCA_CREATED"));
+                    }
+                } else {
+                    sendTo(client, MessageProtocol.encode("ERROR", "INVALID_PARAMS"));
+                }
+                break;
                 
             case "DELETE_FRUIT":
                 if (m.hasParams(3)) {
@@ -384,6 +398,7 @@ protected void update(double delta, boolean crash) {
             System.out.println("\nComandos:");
             System.out.println("  stats  - Mostrar estadísticas");
             System.out.println("  CF - Crear Fruta");
+            System.out.println("  CCA - Crear Cocodrilo Azul");
             System.out.println("  quit   - Detener servidor");
             System.out.println();
             
@@ -459,9 +474,37 @@ protected void update(double delta, boolean crash) {
                         server.broadcast(msg);
 
                         System.out.println("[SERVER CLI] Fruta creada y enviada a clientes:");
-                        System.out.println("  -> vine=" + vine);
-                        System.out.println("  -> height=" + height);
-                        System.out.println("  -> points=" + points);
+                    }
+                }
+                else if (line.equals("cca")) {
+                    // Pedir liana al usuario
+                    System.out.print("Ingrese la liana para el cocodrilo (1-13): ");
+                    String inputVine = scanner.nextLine().trim();
+
+                    int vine;
+                    try {
+                        vine = Integer.parseInt(inputVine);
+                    } catch (NumberFormatException e) {
+                        System.out.println("[SERVER CLI] Valor inválido. Debe ser un número.");
+                        continue;
+                    }
+
+                    int height = 500;
+                    int points = 500;
+
+                    if (server.gameLogic != null) {
+
+                        server.gameLogic.createFruit(vine, height, points);
+                        
+                        // Enviar a TODOS los clientes
+                        String msg = MessageProtocol.encode("CCA_CREATED",
+                                                            String.valueOf(vine),
+                                                            String.valueOf(height),
+                                                            String.valueOf(points));
+
+                        server.broadcast(msg);
+
+                        System.out.println("[SERVER CLI] CCA creado y enviada a clientes:");
                     }
                 }
 
@@ -469,6 +512,7 @@ protected void update(double delta, boolean crash) {
                     System.out.println("Comando desconocido: " + line);
                 }
             }
+            
         }
         
         System.out.println("Deteniendo servidor...");

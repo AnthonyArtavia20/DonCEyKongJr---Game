@@ -167,48 +167,23 @@ int main(void) {
             }
         }
 
-        
-        // ===== PROCESAR COMANDOS DE ENEMIGOS DEL SERVIDOR =====
-        if (strstr(buffer_recepcion, "ENEMY|CREATE|") != NULL) {
-            // Formato: ENEMY|CREATE|TIPO|LIANA
-            int tipo, liana;
-            if (sscanf(buffer_recepcion, "ENEMY|CREATE|%d|%d", &tipo, &liana) == 2) {
-                int idCreado = CrearEnemigoDesdeJava(&gestorEnemigos, tipo, liana);
-                if (idCreado != -1) {
-                    printf("[Java] Enemigo creado exitosamente - ID: %d\n", idCreado);
-                } else {
-                    printf("[Java] Error al crear enemigo\n");
-                }
+        if (strncmp(buffer_recepcion, "CCA_CREATED", 11) == 0) {
+            int vine, height, points;
+            int nuevoID = gestorEnemigos.proximo_id;
+
+            if (sscanf(buffer_recepcion, "CCA_CREATED|%d|%d|%d",
+                    &vine, &height, &points) == 3) {
+
+                printf("[Servidor] CCA_CREATED formato inválido----------------\n");
+
+                CrearEnemigoEnLiana(&gestorEnemigos, nuevoID, COCODRILO_AZUL, vine);
+                gestorEnemigos.proximo_id++; // Incrementar para el siguiente enemigo
+
             } else {
-                printf("[Java] Formato inválido. Usar: ENEMY|CREATE|TIPO|LIANA\n");
+                printf("[Servidor] CCA_CREATED formato inválido\n");
             }
         }
-        else if (strstr(buffer_recepcion, "ENEMY|REMOVE|") != NULL) {
-            // Formato: ENEMY|REMOVE|ID
-            int id;
-            if (sscanf(buffer_recepcion, "ENEMY|REMOVE|%d", &id) == 1) {
-                EliminarEnemigo(&gestorEnemigos, id);
-                printf("[Java] Comando recibido: Eliminar enemigo ID %d\n", id);
-            }
-        }
-        else if (strstr(buffer_recepcion, "ENEMY|LIST") != NULL) {
-            // Comando para listar enemigos activos
-            printf("[Java] Enemigos activos: %d\n", gestorEnemigos.cantidad_enemigos);
-            for (int i = 0; i < MAX_ENEMIGOS; i++) {
-                if (gestorEnemigos.enemigos[i].activo) {
-                    printf("  - ID: %d, Tipo: %d, Liana: %d, Pos: (%.0f, %.0f)\n",
-                           gestorEnemigos.enemigos[i].id,
-                           gestorEnemigos.enemigos[i].tipo,
-                           gestorEnemigos.enemigos[i].lianaActual,
-                           gestorEnemigos.enemigos[i].posicion.x,
-                           gestorEnemigos.enemigos[i].posicion.y);
-                }
-            }
-        }
-        else if (strstr(buffer_recepcion, "ENEMY|DEBUG|LIANAS") != NULL) {
-            // Comando para debug de lianas
-            DebugLianas(&gestorEnemigos);
-        }
+
     }
 }
         
