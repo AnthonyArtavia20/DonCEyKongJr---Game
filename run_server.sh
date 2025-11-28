@@ -1,8 +1,6 @@
 #!/bin/bash
 # run_server.sh - Ejecuta el Servidor Java
 
-export PATH="/c/msys64/mingw64/bin:$PATH"
-
 cd GameServer
 
 echo "╔════════════════════════════════════════════════════════════╗"
@@ -17,9 +15,20 @@ MAX_PLAYERS=4
 echo "🚀 Servidor escuchando en puerto: $PORT"
 echo "👥 Máximo de jugadores: $MAX_PLAYERS"
 echo ""
+echo "✅ Usando Java 21 específicamente..."
+echo ""
+
+# Verificar que existe Java 21
+if [ ! -f "G:/JDK/jdk21.0.3_9/bin/java.exe" ]; then
+    echo "❌ ERROR: No se encuentra Java 21 en G:/JDK/jdk21.0.3_9/"
+    echo "Por favor verifica la ruta de instalación"
+    exit 1
+fi
+
 echo "Presiona Ctrl+C para detener el servidor"
 echo ""
 
-java -cp bin GameServer.DonkeyKong.Server.DonkeyKongServer $PORT $MAX_PLAYERS
+# Usar Java 21 específicamente con ruta completa
+"G:/JDK/jdk21.0.3_9/bin/java" -cp bin GameServer.DonkeyKong.Server.DonkeyKongServer $PORT $MAX_PLAYERS
 
 cd ..
