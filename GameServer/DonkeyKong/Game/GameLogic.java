@@ -6,13 +6,19 @@ public class GameLogic {
     public void update(double delta) {
         // TODO: Ariel implementa
     }
+
+    public void enemyHit(int playerId, int enemyId, int damage) {
+        System.out.println("[GameLogic] enemyHit() => player " + playerId +
+                        " golpeó enemigo " + enemyId + " con " + damage + " de daño");
+    }
+
     
     public String serialize() {
         return "GAMESTATE|0|PLAYERS||CROCS||FRUITS|";
     }
     
     public void addPlayer(int id, String name) {
-        System.out.println("[GameLogic] Jugador agregado: " + name);
+        System.out.println("[GameLogic] Jugador agregado: >>>> " + name);
     }
     
     public void removePlayer(int id) {

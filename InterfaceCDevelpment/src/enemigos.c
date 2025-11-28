@@ -416,7 +416,6 @@ void ActualizarCocodriloAzul(Enemigo* enemigo, GestorEnemigos* gestor, float del
     if (enemigo->posicion.y > ALTO_PANTALLA + 100) {
         enemigo->activo = 0;
         gestor->cantidad_enemigos--;
-        printf("[CocodriloAzul] ID %d eliminado (fuera de pantalla)\n", enemigo->id);
     }
 }
 
@@ -450,8 +449,6 @@ void ActualizarCocodriloRojo(Enemigo* enemigo, GestorEnemigos* gestor, float del
                 enemigo->enLiana = 1;
                 enemigo->lianaActual = lianaID;
                 enemigo->direccion = -1;
-                printf("[CocodriloRojo] ID %d se reubicó en liana %d - Velocidad: %.2f (Nivel %d)\n", 
-                       enemigo->id, lianaID, velocidadActual, gestor->nivel_actual);
             }
         } else {
             enemigo->velocidad = (Vector2){0, 0};
@@ -466,12 +463,10 @@ void ActualizarCocodriloRojo(Enemigo* enemigo, GestorEnemigos* gestor, float del
         if (enemigo->posicion.y <= minY) {
             enemigo->posicion.y = minY;
             enemigo->direccion = 1;
-            printf("[CocodriloRojo] ID %d llegó al tope - cambiando a BAJAR\n", enemigo->id);
         }
         else if (enemigo->posicion.y >= maxY) {
             enemigo->posicion.y = maxY;
             enemigo->direccion = -1;
-            printf("[CocodriloRojo] ID %d llegó al fondo - cambiando a SUBIR\n", enemigo->id);
         }
         
         int tileX = (int)((enemigo->posicion.x + enemigo->hitbox.width/2) / gestor->mapa->tileSize);
@@ -492,11 +487,9 @@ void ActualizarCocodriloRojo(Enemigo* enemigo, GestorEnemigos* gestor, float del
         
         if (enemigo->direccion < 0 && !hayLianaArriba) {
             enemigo->direccion = 1;
-            printf("[CocodriloRojo] ID %d - no hay liana arriba, cambiando a BAJAR\n", enemigo->id);
         }
         else if (enemigo->direccion > 0 && !hayLianaAbajo) {
             enemigo->direccion = -1;
-            printf("[CocodriloRojo] ID %d - no hay liana abajo, cambiando a SUBIR\n", enemigo->id);
         }
     }
     

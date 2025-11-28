@@ -5,6 +5,7 @@ import GameServer.DonkeyKong.Game.GameLogic;
 import java.io.IOException;
 import java.net.Socket;
 import java.util.Scanner;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
  * Servidor específico para DonCEy Kong Jr
@@ -17,6 +18,8 @@ public class DonkeyKongServer extends GameServer {
     private GameLogic gameLogic;
     private int playerCount = 0;
     private int spectatorCount = 0;
+    private final ConcurrentLinkedQueue<MessageProtocol.Message> gameEvents = new ConcurrentLinkedQueue<>();
+
     
     public DonkeyKongServer(ServerConfig config) {
         super(config);
@@ -38,13 +41,70 @@ public class DonkeyKongServer extends GameServer {
     }
     
     @Override
-    protected void update(double delta) {
-        // Actualizar lógica del juego (Ariel implementa esto)
-        if (gameLogic != null) {
-            gameLogic.update(delta);
+protected void update(double delta, boolean crash) {
+
+    // Procesar eventos pendientes
+    MessageProtocol.Message evt;
+    while ((evt = gameEvents.poll()) != null) {
+
+        System.out.println("\n[SERVER UPDATE] Procesando evento: " + evt.command);
+
+        switch (evt.command) {
+
+            // --- HIT A FRUTA ---
+            case "HIT": {
+                int vine = evt.getParamAsInt(0, -1);
+                int height = evt.getParamAsInt(1, -1);
+
+                System.out.println("  -> Tipo: HIT (fruta)");
+                System.out.println("  -> vine: " + vine);
+                System.out.println("  -> height: " + height);
+
+                if (gameLogic != null) {
+                    System.out.println("  -> Llamando gameLogic.deleteFruit(" + vine + ", " + height + ")");
+                    gameLogic.deleteFruit(vine, height);
+                } else {
+                    System.out.println("  -> gameLogic es NULL, no se puede procesar HIT.");
+                }
+                break;
+            }
+
+            // --- HIT A ENEMIGO ---
+            case "ENEMY_HIT": {
+                int playerId = evt.getParamAsInt(0, -1);
+                int enemyId = evt.getParamAsInt(1, -1);
+                int damage  = evt.getParamAsInt(2, 1);
+
+                System.out.println("  -> Tipo: ENEMY_HIT (cocodrilo)");
+                System.out.println("  -> playerId: " + playerId);
+                System.out.println("  -> enemyId: " + enemyId);
+                System.out.println("  -> damage: " + damage);
+
+                if (gameLogic != null) {
+                    System.out.println("  -> Llamando gameLogic.enemyHit(" + 
+                                        playerId + ", " + enemyId + ", " + damage + ")");
+                    // Debes implementar esto en GameLogic
+                    gameLogic.enemyHit(playerId, enemyId, damage);
+                } else {
+                    System.out.println("  -> gameLogic es NULL, no se puede procesar ENEMY_HIT.");
+                }
+                break;
+            }
+
+            default:
+                System.out.println("  -> Evento desconocido: " + evt.command);
+                break;
         }
     }
-    
+
+    // Ejecutar update del juego
+    if (gameLogic != null) {
+        gameLogic.update(delta);
+    }
+}
+
+
+
     @Override
     protected String getGameState() {
         // Serializar estado del juego para enviar a clientes
@@ -71,7 +131,19 @@ public class DonkeyKongServer extends GameServer {
             case "MOVE":
                 handleMove(dkClient, m);
                 break;
+
+            case "HIT":
+                gameEvents.add(m);
+                break;
+
+            case "ENEMY_HIT":
+                System.out.println("[SERVER] ENEMY_HIT recibido de cliente: " + dkClient.getPlayerName());
+
+                // Meter el evento correcto a la cola
+                gameEvents.add(m);   // ✅ Aquí debe ir m, NO msg
+                break;
                 
+
             case "ADMIN":
                 handleAdmin(dkClient, m);
                 break;

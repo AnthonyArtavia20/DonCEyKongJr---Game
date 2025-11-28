@@ -67,7 +67,7 @@ public abstract class GameServer {
             long periodMs = Math.max(1, 1000 / config.getTickRate()); // Convierte a milisegundos (ej: 50ms)
             scheduler.scheduleAtFixedRate(() -> {
                 try {
-                    update(delta); //Y aquí se llamaría al método update, para esos miulisegundos, ejemplo 50ms
+                    update(delta, false); //Y aquí se llamaría al método update, para esos miulisegundos, ejemplo 50ms
                 } catch (Throwable t) {
                     System.err.println("[Error] update() lanzó excepción: " + t.getMessage());
                 }
@@ -171,7 +171,7 @@ public abstract class GameServer {
 
     //Métodos abstractos:
     protected abstract ClientHandler createClient(Socket socket); //Patrón Factory, GameServer delega la creación de clientes, DonkeyKongServer.createClient() lo implementa
-    protected abstract void update(double delta);
+    protected abstract void update(double delta, boolean crash);
     protected abstract String getGameState();
     protected abstract void handleMessage(ClientHandler client, String msg);
 }

@@ -147,7 +147,6 @@ int main(void) {
         if (conectado && esta_conectado()) {
     int bytes = recibir_mensaje(buffer_recepcion, sizeof(buffer_recepcion));
     if (bytes > 0) {
-        printf("[Servidor]: %s\n", buffer_recepcion);
         
         // ===== PROCESAR COMANDOS DE ENEMIGOS DEL SERVIDOR =====
         if (strstr(buffer_recepcion, "ENEMY|CREATE|") != NULL) {
@@ -203,7 +202,14 @@ int main(void) {
             if (enemigoColisionado != -1) {
                 salud--;
                 printf("[Juego] ¡Colisión con enemigo! Salud: %d/%d\n", salud, VIDA_MAXIMA);
-                
+
+                if (esta_conectado()) {
+                    char msg[128];
+                    snprintf(msg, sizeof(msg), "ENEMY_HIT|1|%d|%d", enemigoColisionado, salud);
+                    enviar_mensaje(msg);
+                    printf("[Socket] Enviado al servidor: %s\n", msg);
+                }
+
                 // Reposicionar jugador
                 cuadradoPos = (Vector2){50, 100};
                 velocidadY = 0;
@@ -212,12 +218,6 @@ int main(void) {
                 if (salud <= 0) {
                     gameOver = true;
                     printf("[Juego] ¡GAME OVER!\n");
-                }
-                
-                if (conectado && esta_conectado()) {
-                    char mensaje[50];
-                    snprintf(mensaje, sizeof(mensaje), "ACTION|1|HIT|%d", salud);
-                    enviar_mensaje(mensaje);
                 }
             }
             
