@@ -174,13 +174,26 @@ int main(void) {
             if (sscanf(buffer_recepcion, "CCA_CREATED|%d|%d|%d",
                     &vine, &height, &points) == 3) {
 
-                printf("[Servidor] CCA_CREATED formato inválido----------------\n");
-
                 CrearEnemigoEnLiana(&gestorEnemigos, nuevoID, COCODRILO_AZUL, vine);
                 gestorEnemigos.proximo_id++; // Incrementar para el siguiente enemigo
 
             } else {
                 printf("[Servidor] CCA_CREATED formato inválido\n");
+            }
+        }
+
+        if (strncmp(buffer_recepcion, "CCR_CREATED", 11) == 0) {
+            int vine, height, points;
+            int nuevoID = gestorEnemigos.proximo_id;
+
+            if (sscanf(buffer_recepcion, "CCR_CREATED|%d|%d|%d",
+                    &vine, &height, &points) == 3) {
+
+                CrearEnemigoEnLiana(&gestorEnemigos, nuevoID, COCODRILO_ROJO, vine);
+                gestorEnemigos.proximo_id++; // Incrementar para el siguiente enemigo
+
+            } else {
+                printf("[Servidor] CCR_CREATED formato inválido\n");
             }
         }
 

@@ -399,6 +399,7 @@ protected void update(double delta, boolean crash) {
             System.out.println("  stats  - Mostrar estadísticas");
             System.out.println("  CF - Crear Fruta");
             System.out.println("  CCA - Crear Cocodrilo Azul");
+            System.out.println("  CCR - Crear Cocodrilo Rojo");
             System.out.println("  quit   - Detener servidor");
             System.out.println();
             
@@ -478,7 +479,39 @@ protected void update(double delta, boolean crash) {
                 }
                 else if (line.equals("cca")) {
                     // Pedir liana al usuario
-                    System.out.print("Ingrese la liana para el cocodrilo (1-13): ");
+                    System.out.print("Ingrese la liana para el cocodrilo (1-12): ");
+                    String inputVine = scanner.nextLine().trim();
+
+                    int vine;
+                    try {
+                        vine = Integer.parseInt(inputVine);
+                    } catch (NumberFormatException e) {
+                        System.out.println("[SERVER CLI] Valor inválido. Debe ser un número.");
+                        continue;
+                    }
+
+                    int height = 500;
+                    int points = 500;
+
+                    if (server.gameLogic != null) {
+
+                        server.gameLogic.createFruit(vine, height, points);
+
+                        // Enviar a TODOS los clientes
+                        String msg = MessageProtocol.encode("CCA_CREATED",
+                                                            String.valueOf(vine),
+                                                            String.valueOf(height),
+                                                            String.valueOf(points));
+
+                        server.broadcast(msg);
+
+                        System.out.println("[SERVER CLI] CCA creado y enviada a clientes:");
+                    }
+                }
+
+                else if (line.equals("ccr")) {
+                    // Pedir liana al usuario
+                    System.out.print("Ingrese la liana para el cocodrilo (1-12): ");
                     String inputVine = scanner.nextLine().trim();
 
                     int vine;
@@ -497,14 +530,14 @@ protected void update(double delta, boolean crash) {
                         server.gameLogic.createFruit(vine, height, points);
                         
                         // Enviar a TODOS los clientes
-                        String msg = MessageProtocol.encode("CCA_CREATED",
+                        String msg = MessageProtocol.encode("CCR_CREATED",
                                                             String.valueOf(vine),
                                                             String.valueOf(height),
                                                             String.valueOf(points));
 
                         server.broadcast(msg);
 
-                        System.out.println("[SERVER CLI] CCA creado y enviada a clientes:");
+                        System.out.println("[SERVER CLI] CCR creado y enviada a clientes:");
                     }
                 }
 
