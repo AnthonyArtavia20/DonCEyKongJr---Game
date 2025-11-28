@@ -398,17 +398,28 @@ protected void update(double delta, boolean crash) {
                     System.out.println("Espectadores activos: " + server.spectatorCount);
                 }
                 else if (line.equals("cf")) {
-                    // Comando de prueba para crear una fruta en la vid 1, altura 100, 500 puntos
-                    int vine = 1;
+                    // Pedir liana al usuario
+                    System.out.print("Ingrese la liana para la fruta (0-? según tu juego): ");
+                    String inputVine = scanner.nextLine().trim();
+
+                    int vine;
+                    try {
+                        vine = Integer.parseInt(inputVine);
+                    } catch (NumberFormatException e) {
+                        System.out.println("[SERVER CLI] Valor inválido. Debe ser un número.");
+                        continue;
+                    }
+
+                    // Puedes permitir ingresar altura también si quieres:
                     int height = 100;
                     int points = 500;
 
                     if (server.gameLogic != null) {
 
-                        // Crear fruta en la lógica del servidor
+                        // Crear fruta en la lógica interna del servidor
                         server.gameLogic.createFruit(vine, height, points);
 
-                        // Enviar mensaje a TODOS los clientes conectados
+                        // Enviar a TODOS los clientes
                         String msg = MessageProtocol.encode("FRUIT_CREATED",
                                                             String.valueOf(vine),
                                                             String.valueOf(height),
@@ -422,6 +433,7 @@ protected void update(double delta, boolean crash) {
                         System.out.println("  -> points=" + points);
                     }
                 }
+
                 else {
                     System.out.println("Comando desconocido: " + line);
                 }
