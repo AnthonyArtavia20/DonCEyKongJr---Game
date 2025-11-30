@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "fruta.h"
-
+// TODO: Borrar lo de la lógica de juegos y creación de enemigos de acá
 
 #define ANCHO_PANTALLA 1200
 #define ALTO_PANTALLA 800
@@ -109,26 +109,14 @@ int main(void) {
     // ===== INICIALIZAR SISTEMA DE ENEMIGOS =====
     InicializarEnemigos(&gestorEnemigos, mapa);
     InicializarFrutas(&gestorFrutas);
-
-
-    /////////////////////////////////////DEBUG////////////////////////////////////////////
-
-    // ===== CREAR ENEMIGOS DE PRUEBA (TEMPORAL) =====
-    printf("=== Creando enemigos de prueba ===\n");
-    CrearEnemigoEnLiana(&gestorEnemigos, 1, COCODRILO_AZUL, 1); // Liana ID 1
-    CrearEnemigoEnLiana(&gestorEnemigos, 2, COCODRILO_AZUL, 2); // Liana ID 2  
-    CrearEnemigoEnLiana(&gestorEnemigos, 3, COCODRILO_AZUL, 3); // Liana ID 3
-    CrearEnemigoEnLiana(&gestorEnemigos, 4, COCODRILO_AZUL, 4); // Liana ID 1
-    CrearEnemigoEnLiana(&gestorEnemigos, 5, COCODRILO_AZUL, 5); // Liana ID 2  
-    CrearEnemigoEnLiana(&gestorEnemigos, 6, COCODRILO_AZUL, 6); // Liana ID 3
-    CrearEnemigoEnLiana(&gestorEnemigos, 7, COCODRILO_ROJO, 7); // Liana ID 1
-    CrearEnemigoEnLiana(&gestorEnemigos, 8, COCODRILO_AZUL, 8); // Liana ID 2  
-    CrearEnemigoEnLiana(&gestorEnemigos, 9, COCODRILO_AZUL, 11); // Liana ID 3
-    CrearEnemigoEnLiana(&gestorEnemigos, 10, COCODRILO_ROJO, 12); // Liana ID 1
-
-    /////////////////////////////////////DEBUG////////////////////////////////////////////
-
     
+    /*
+        NOTA: Los enemigos ya NO se crean aquí.
+        El SERVIDOR (Java) crea enemigos mediante GameLogic + Factory Pattern.
+        Este cliente solo DIBUJA enemigos que recibe del servidor via GAMESTATE.
+        Para crear enemigos, usa los comandos del servidor: CF, CCA, CCR
+    */
+
     // --- VARIABLES DEL JUGADOR ---
     Vector2 cuadradoPos = {50, 100};
     int cuadradoSize = 50;
