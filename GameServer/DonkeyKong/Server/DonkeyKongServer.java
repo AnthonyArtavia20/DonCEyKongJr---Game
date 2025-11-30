@@ -366,6 +366,7 @@ protected void update(double delta, boolean crash) {
     }
     
     // Main para ejecutar el servidor
+    // Main para ejecutar el servidor
     public static void main(String[] args) {
         int port = 5000;
         if (args.length >= 1) {
@@ -381,6 +382,8 @@ protected void update(double delta, boolean crash) {
         System.out.println("  Puerto: " + port);
         System.out.println("  Max Jugadores: 2");
         System.out.println("  Max Espectadores: 4");
+        System.out.println("  Factory Pattern: ✓");
+        System.out.println("  Nivel inicial: 1");
         System.out.println("=================================");
         
         DonkeyKongServer server = new DonkeyKongServer(port);
@@ -395,11 +398,13 @@ protected void update(double delta, boolean crash) {
         
         // CLI simple
         try (Scanner scanner = new Scanner(System.in)) {
-            System.out.println("\nComandos:");
-            System.out.println("  stats  - Mostrar estadísticas");
-            System.out.println("  CF - Crear Fruta");
-            System.out.println("  CCA - Crear Cocodrilo Azul");
-            System.out.println("  CCR - Crear Cocodrilo Rojo");
+            System.out.println("\nComandos disponibles:");
+            System.out.println("  stats  - Mostrar estadísticas del servidor");
+            System.out.println("  cf     - Crear Fruta (puntos según nivel)");
+            System.out.println("  cca    - Crear Cocodrilo Azul (velocidad según nivel)");
+            System.out.println("  ccr    - Crear Cocodrilo Rojo (velocidad según nivel)");
+            System.out.println("  level  - Cambiar nivel (cambia Factory automáticamente)");
+            System.out.println("  info   - Información del estado del juego");
             System.out.println("  quit   - Detener servidor");
             System.out.println();
             
@@ -408,147 +413,152 @@ protected void update(double delta, boolean crash) {
                 
                 if (line.equals("quit") || line.equals("exit") || line.equals("stop")) {
                     break;
+                    
                 } else if (line.equals("stats")) {
+                    System.out.println("\n=== ESTADÍSTICAS DEL SERVIDOR ===");
                     System.out.println(server.stats.toString());
                     System.out.println("Jugadores activos: " + server.playerCount);
                     System.out.println("Espectadores activos: " + server.spectatorCount);
-                }
-                else if (line.equals("cf")) {
-                    // Pedir liana al usuario
+                    System.out.println("==================================\n");
+                    
+                } else if (line.equals("info")) {
+                    System.out.println("\n=== ESTADO DEL JUEGO ===");
+                    if (server.gameLogic != null) {
+                        System.out.println("Nivel actual: " + server.gameLogic.getCurrentLevel());
+                        System.out.println("Enemigos activos: " + server.gameLogic.getEnemyCount());
+                        System.out.println("Frutas activas: " + server.gameLogic.getFruitCount());
+                    } else {
+                        System.out.println("GameLogic no inicializado");
+                    }
+                    System.out.println("=========================\n");
+                    
+                } else if (line.equals("level")) {
+                    System.out.print("Ingrese el nuevo nivel (1-3): ");
+                    String inputLevel = scanner.nextLine().trim();
+                    
+                    try {
+                        int newLevel = Integer.parseInt(inputLevel);
+                        if (newLevel < 1 || newLevel > 3) {
+                            System.out.println("[SERVER] ERROR: Nivel debe estar entre 1 y 3");
+                            continue;
+                        }
+                        
+                        if (server.gameLogic != null) {
+                            server.gameLogic.changeLevel(newLevel);
+                            System.out.println("[SERVER] ✓ Nivel cambiado a " + newLevel);
+                            System.out.println("[SERVER] La Factory ahora creará enemigos de nivel " + newLevel);
+                        }
+                    } catch (NumberFormatException e) {
+                        System.out.println("[SERVER] ERROR: Debe ingresar un número válido");
+                    }
+                    
+                } else if (line.equals("cf")) {
                     System.out.print("Ingrese la liana para la fruta (1-9): ");
                     String inputVine = scanner.nextLine().trim();
 
                     int vine;
                     try {
                         vine = Integer.parseInt(inputVine);
+                        if (vine < 1 || vine > 9) {
+                            System.out.println("[SERVER] ERROR: Liana debe estar entre 1 y 9");
+                            continue;
+                        }
                     } catch (NumberFormatException e) {
-                        System.out.println("[SERVER CLI] Valor inválido. Debe ser un número.");
+                        System.out.println("[SERVER] ERROR: Debe ingresar un número válido");
                         continue;
                     }
 
-                    int height;
-                    
-                    if (vine == 1) {
-                        height = 500;
-                    }
-                    else if (vine == 2) {
-                        height = 400;
-                    }
-                    else if (vine == 3) {
-                        height = 450;
-                    }
-                    else if (vine == 4) {
-                        height = 300;
-                    }
-                    else if (vine == 5) {
-                        height = 350;
-                    }
-                    else if (vine == 6) {
-                        height = 400;
-                    }
-                    else if (vine == 7) {
-                        height = 450;
-                    }
-                    else if (vine == 8) {
-                        height = 200;
-                    }
-                    else if (vine == 9) {
-                        height = 550;
-                    }
-                    else {
-                        height = 300;
-                    }
-
-                    int points = 500;
+                    // Altura default (puedes cambiarla si quieres)
+                    int height = 400;
 
                     if (server.gameLogic != null) {
-
-                        // Crear fruta en la lógica interna del servidor
-                        server.gameLogic.createFruit(vine, height, points);
+                        // La factory asigna los puntos según el nivel
+                        server.gameLogic.createFruit(vine, height, 0);
 
                         // Enviar a TODOS los clientes
                         String msg = MessageProtocol.encode("FRUIT_CREATED",
                                                             String.valueOf(vine),
                                                             String.valueOf(height),
-                                                            String.valueOf(points));
+                                                            "0");
 
                         server.broadcast(msg);
-
-                        System.out.println("[SERVER CLI] Fruta creada y enviada a clientes:");
+                        
+                        System.out.println("[SERVER] ✓ Fruta creada en liana " + vine + 
+                                        " (Nivel " + server.gameLogic.getCurrentLevel() + ")");
                     }
-                }
-                else if (line.equals("cca")) {
-                    // Pedir liana al usuario
-                    System.out.print("Ingrese la liana para el cocodrilo (1-12): ");
+                    
+                } else if (line.equals("cca")) {
+                    System.out.print("Ingrese la liana para el cocodrilo azul (1-9): ");
                     String inputVine = scanner.nextLine().trim();
 
                     int vine;
                     try {
                         vine = Integer.parseInt(inputVine);
+                        if (vine < 1 || vine > 9) {
+                            System.out.println("[SERVER] ERROR: Liana debe estar entre 1 y 9");
+                            continue;
+                        }
                     } catch (NumberFormatException e) {
-                        System.out.println("[SERVER CLI] Valor inválido. Debe ser un número.");
+                        System.out.println("[SERVER] ERROR: Debe ingresar un número válido");
                         continue;
                     }
 
-                    int height = 500;
-                    int points = 500;
-
                     if (server.gameLogic != null) {
-
-                        server.gameLogic.createFruit(vine, height, points);
+                        // La factory asigna la velocidad según el nivel
+                        server.gameLogic.createBlueCrocodile(vine, 0);
 
                         // Enviar a TODOS los clientes
                         String msg = MessageProtocol.encode("CCA_CREATED",
                                                             String.valueOf(vine),
-                                                            String.valueOf(height),
-                                                            String.valueOf(points));
+                                                            "0",
+                                                            "0");
 
                         server.broadcast(msg);
-
-                        System.out.println("[SERVER CLI] CCA creado y enviada a clientes:");
+                        
+                        System.out.println("[SERVER] ✓ Cocodrilo AZUL creado en liana " + vine + 
+                                        " (Nivel " + server.gameLogic.getCurrentLevel() + ")");
                     }
-                }
-
-                else if (line.equals("ccr")) {
-                    // Pedir liana al usuario
-                    System.out.print("Ingrese la liana para el cocodrilo (1-12): ");
+                    
+                } else if (line.equals("ccr")) {
+                    System.out.print("Ingrese la liana para el cocodrilo rojo (1-9): ");
                     String inputVine = scanner.nextLine().trim();
 
                     int vine;
                     try {
                         vine = Integer.parseInt(inputVine);
+                        if (vine < 1 || vine > 9) {
+                            System.out.println("[SERVER] ERROR: Liana debe estar entre 1 y 9");
+                            continue;
+                        }
                     } catch (NumberFormatException e) {
-                        System.out.println("[SERVER CLI] Valor inválido. Debe ser un número.");
+                        System.out.println("[SERVER] ERROR: Debe ingresar un número válido");
                         continue;
                     }
 
-                    int height = 500;
-                    int points = 500;
-
                     if (server.gameLogic != null) {
+                        // La factory asigna la velocidad según el nivel
+                        server.gameLogic.createRedCrocodile(vine, 0);
 
-                        server.gameLogic.createFruit(vine, height, points);
-                        
                         // Enviar a TODOS los clientes
                         String msg = MessageProtocol.encode("CCR_CREATED",
                                                             String.valueOf(vine),
-                                                            String.valueOf(height),
-                                                            String.valueOf(points));
+                                                            "0",
+                                                            "0");
 
                         server.broadcast(msg);
-
-                        System.out.println("[SERVER CLI] CCR creado y enviada a clientes:");
+                        
+                        System.out.println("[SERVER] ✓ Cocodrilo ROJO creado en liana " + vine + 
+                                        " (Nivel " + server.gameLogic.getCurrentLevel() + ")");
                     }
-                }
-
-                else {
-                    System.out.println("Comando desconocido: " + line);
+                    
+                } else {
+                    System.out.println("[SERVER] Comando desconocido: " + line);
+                    System.out.println("Escribe 'stats', 'info', 'cf', 'cca', 'ccr', 'level' o 'quit'");
                 }
             }
-            
         }
         
-        System.out.println("Deteniendo servidor...");
+        System.out.println("\n[SERVER] Deteniendo servidor...");
         server.stop();
         System.exit(0);
     }
