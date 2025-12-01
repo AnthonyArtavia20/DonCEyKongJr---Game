@@ -14,6 +14,7 @@ typedef struct {
 } LianaInfoFruta;
 
 typedef struct {
+    int id;         // ID único proporcionado por el servidor (o asignado localmente)
     int activo;
     int liana;      // ID de liana
     int puntos;
@@ -40,8 +41,12 @@ void RegistrarLianaFruta(GestorFrutas* gestor, int id, float x_pos,
 LianaInfoFruta* ObtenerLianaFrutaPorID(GestorFrutas* gestor, int lianaID);
 
 // Frutas
-int CrearFruta(GestorFrutas* gestor, int lianaID, float y, int puntos);
+// CrearFruta ahora recibe un id (proporcionado por servidor o -1 para local)
+int CrearFruta(GestorFrutas* gestor, int id, int lianaID, float y, int puntos);
 void DibujarFrutas(GestorFrutas* gestor);
 void EliminarFruta(GestorFrutas* gestor, int index);
+
+// Eliminar por id (busca y elimina la fruta con ese id)
+void EliminarFrutaPorId(GestorFrutas* gestor, int id);
 
 #endif

@@ -4,21 +4,85 @@
 #include "enemigos.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#include <stdbool.h>
 #include "fruta.h"
-// TODO: Borrar lo de la lógica de juegos y creación de enemigos de acá
 
 #define ANCHO_PANTALLA 1200
 #define ALTO_PANTALLA 800
 #define TILE_SIZE 17
 #define VIDA_MAXIMA 3
 #define VELOCIDAD_BASE_ENEMIGOS 1.0f
+#define MAX_REMOTE_PLAYERS 16
 
-// Declarar global (correcto)
+// Declarar global
 GestorEnemigos gestorEnemigos;
 GestorFrutas gestorFrutas;
 
+// ✅ NUEVO: Variables para espectador
+static int watchedPlayerId = 1;      // Por defecto observa al jugador 1
+static bool showAllPlayers = false;  // false = solo uno, true = todos
 
-// [AGREGAR funciones nuevas]
+typedef struct {
+    int id;
+    Vector2 pos;
+    int activo;
+    char nombre[32];
+} RemotePlayer;
+
+RemotePlayer remotePlayers[MAX_REMOTE_PLAYERS];
+
+static void InicializarRemotePlayers(void) {
+    for (int i = 0; i < MAX_REMOTE_PLAYERS; i++) {
+        remotePlayers[i].id = -1;
+        remotePlayers[i].pos = (Vector2){0,0};
+        remotePlayers[i].activo = 0;
+        remotePlayers[i].nombre[0] = '\0';
+    }
+}
+
+static int FindRemoteIndexById(int id) {
+    if (id <= 0) return -1;
+    for (int i = 0; i < MAX_REMOTE_PLAYERS; i++) {
+        if (remotePlayers[i].activo && remotePlayers[i].id == id) return i;
+    }
+    return -1;
+}
+
+static int AllocRemoteSlot(void) {
+    for (int i = 0; i < MAX_REMOTE_PLAYERS; i++) {
+        if (!remotePlayers[i].activo) return i;
+    }
+    return -1;
+}
+
+static void UpsertRemotePlayer(int id, float x, float y, const char* name) {
+    int idx = FindRemoteIndexById(id);
+    if (idx >= 0) {
+        remotePlayers[idx].pos.x = x;
+        remotePlayers[idx].pos.y = y;
+        if (name && name[0] != '\0') strncpy(remotePlayers[idx].nombre, name, sizeof(remotePlayers[idx].nombre)-1);
+        return;
+    }
+    int slot = AllocRemoteSlot();
+    if (slot < 0) return;
+    remotePlayers[slot].id = id;
+    remotePlayers[slot].pos.x = x;
+    remotePlayers[slot].pos.y = y;
+    remotePlayers[slot].activo = 1;
+    if (name && name[0] != '\0') strncpy(remotePlayers[slot].nombre, name, sizeof(remotePlayers[slot].nombre)-1);
+    else snprintf(remotePlayers[slot].nombre, sizeof(remotePlayers[slot].nombre), "P%d", id);
+}
+
+static void RemoveRemotePlayer(int id) {
+    int idx = FindRemoteIndexById(id);
+    if (idx >= 0) {
+        remotePlayers[idx].activo = 0;
+        remotePlayers[idx].id = -1;
+        remotePlayers[idx].nombre[0] = '\0';
+    }
+}
+
 int VerificarColisionConEnemigos(GestorEnemigos* gestor, float x, float y, int ancho, int alto) {
     Rectangle jugadorRect = {x, y, ancho, alto};
     
@@ -29,13 +93,12 @@ int VerificarColisionConEnemigos(GestorEnemigos* gestor, float x, float y, int a
             }
         }
     }
-    return -1; // No hay colisión
+    return -1;
 }
 
 int VerificarMeta(Mapa *mapa, float x, float y, int ancho, int alto) {
     if (!mapa) return 0;
     
-    // Verificar varios puntos del jugador
     float puntosX[] = {x, x + ancho * 0.5f, x + ancho - 1};
     float puntosY[] = {y, y + alto * 0.5f, y + alto - 1};
     
@@ -54,21 +117,81 @@ int VerificarMeta(Mapa *mapa, float x, float y, int ancho, int alto) {
     return 0;
 }
 
-int main(void) {
+int main(int argc, char** argv) {
+    // ===== PARSEO DE ARGUMENTOS =====
+    bool observerMode = false;
+    const char* clientName = "JugadorC";
+    const char* serverHost = "localhost";
+    int serverPort = 5000;
+    watchedPlayerId = 1; // Por defecto observa jugador 1
+
+    if (argc >= 2) {
+        for (int i = 1; i < argc; i++) {
+            if (strcmp(argv[i], "--spectator") == 0 || strcmp(argv[i], "--observer") == 0) {
+                observerMode = true;
+                if (i + 1 < argc && argv[i+1][0] != '-') {
+                    clientName = argv[i+1];
+                    i++;
+                }
+            } else if (strcmp(argv[i], "--player") == 0) {
+                if (i + 1 < argc && argv[i+1][0] != '-') {
+                    clientName = argv[i+1];
+                    i++;
+                }
+            } else if (strcmp(argv[i], "--host") == 0) {
+                if (i + 1 < argc) {
+                    serverHost = argv[i+1];
+                    i++;
+                }
+            } else if (strcmp(argv[i], "--port") == 0) {
+                if (i + 1 < argc) {
+                    serverPort = atoi(argv[i+1]);
+                    i++;
+                }
+            } else if (strcmp(argv[i], "--watch") == 0) {
+                if (i + 1 < argc) {
+                    watchedPlayerId = atoi(argv[i+1]);
+                    if (watchedPlayerId < 1) watchedPlayerId = 1;
+                    i++;
+                }
+            }
+        }
+    }
+
     // Inicializar ventana
     InitWindow(ANCHO_PANTALLA, ALTO_PANTALLA, "Don CEy Kong Jr - Online");
     SetTargetFPS(60);
     
     printf("=== INICIANDO DEBUG ===\n");
     printf("Pantalla: %dx%d, Tile: %d\n", ANCHO_PANTALLA, ALTO_PANTALLA, TILE_SIZE);
+    printf("Conectando a servidor %s:%d\n", serverHost, serverPort);
+    printf("Modo: %s\n", observerMode ? "ESPECTADOR" : "JUGADOR");
+    if (observerMode) {
+        printf("Observando jugador: %d\n", watchedPlayerId);
+    }
+
+    // Inicializar lista de remotos
+    InicializarRemotePlayers();
 
     // ===== CONEXIÓN AL SERVIDOR =====
     printf("=== Conectando al servidor ===\n");
     bool conectado = false;
-    if (conectar_servidor("localhost", 5000) == 0) {
+    int playerId = -1;
+    int puntuacion = 0;
+    
+    if (conectar_servidor(serverHost, serverPort) == 0) {
         conectado = true;
-        enviar_mensaje("CONNECT|PLAYER|JugadorC");
-        printf("Mensaje CONNECT enviado\n");
+        if (observerMode) {
+            char buf[256];
+            snprintf(buf, sizeof(buf), "CONNECT|SPECTATOR|%s", clientName);
+            enviar_mensaje(buf);
+            printf("Conectado como SPECTATOR: %s\n", clientName);
+        } else {
+            char buf[256];
+            snprintf(buf, sizeof(buf), "CONNECT|PLAYER|%s", clientName);
+            enviar_mensaje(buf);
+            printf("Mensaje CONNECT enviado (PLAYER): %s\n", clientName);
+        }
     } else {
         printf("AVISO: No se pudo conectar al servidor - Modo offline\n");
         printf("Asegurate de que el servidor Java esté corriendo\n");
@@ -88,12 +211,10 @@ int main(void) {
     }
     printf("Mapa creado: %dx%d\n", mapa->ancho, mapa->alto);
     
-    // Verificar archivo de fondo
     if (!FileExists("assets/Fondo.png")) {
         printf("AVISO: assets/Fondo.png no existe - usando fondo azul\n");
     }
     
-    // Cargar fondo y crear ejemplo
     CargarFondo(mapa, "assets/Fondo.png");
     CrearMapaEjemplo(mapa);
     printf("Mapa ejemplo creado\n");
@@ -110,13 +231,6 @@ int main(void) {
     InicializarEnemigos(&gestorEnemigos, mapa);
     InicializarFrutas(&gestorFrutas);
     
-    /*
-        NOTA: Los enemigos ya NO se crean aquí.
-        El SERVIDOR (Java) crea enemigos mediante GameLogic + Factory Pattern.
-        Este cliente solo DIBUJA enemigos que recibe del servidor via GAMESTATE.
-        Para crear enemigos, usa los comandos del servidor: CF, CCA, CCR
-    */
-
     // --- VARIABLES DEL JUGADOR ---
     Vector2 cuadradoPos = {50, 100};
     int cuadradoSize = 50;
@@ -129,84 +243,187 @@ int main(void) {
     const float gravedad = 0.5f;
     const float fuerzaSalto = -12.0f;
     
-    // Variables para comunicación
     char buffer_recepcion[4096];
     bool movimientoEnviado = false;
 
     printf("=== INICIANDO BUCLE ===\n");
     
-    // Bucle principal
+    // ===== BUCLE PRINCIPAL =====
     while (!WindowShouldClose()) {
         // ===== RECIBIR MENSAJES DEL SERVIDOR =====
         if (conectado && esta_conectado()) {
-    int bytes = recibir_mensaje(buffer_recepcion, sizeof(buffer_recepcion));
-    if (bytes > 0) {
+            int bytes = recibir_mensaje(buffer_recepcion, sizeof(buffer_recepcion)-1);
+            if (bytes > 0) {
+                if (bytes < (int)sizeof(buffer_recepcion)) buffer_recepcion[bytes] = '\0';
+                else buffer_recepcion[sizeof(buffer_recepcion)-1] = '\0';
 
-        if (strncmp(buffer_recepcion, "FRUIT_CREATED", 13) == 0) {
-            int vine, height, points;
+                // OK con PLAYER_ID
+                if (strncmp(buffer_recepcion, "OK|PLAYER_ID|", 13) == 0) {
+                    int id = -1;
+                    if (sscanf(buffer_recepcion, "OK|PLAYER_ID|%d", &id) == 1) {
+                        playerId = id;
+                        printf("[Servidor] Asignado PLAYER_ID = %d\n", playerId);
+                        const char* scorePtr = strstr(buffer_recepcion, "SCORE|");
+                        if (scorePtr) {
+                            int score = 0;
+                            sscanf(scorePtr, "SCORE|%d", &score);
+                            puntuacion = score;
+                        }
+                    }
+                }
 
-            if (sscanf(buffer_recepcion, "FRUIT_CREATED|%d|%d|%d",
-                    &vine, &height, &points) == 3) {
+                // PLAYER_POS|<playerId>|<x>|<y>
+                if (strncmp(buffer_recepcion, "PLAYER_POS|", 11) == 0) {
+                    int pid;
+                    float px, py;
+                    if (sscanf(buffer_recepcion, "PLAYER_POS|%d|%f|%f", &pid, &px, &py) == 3) {
+                        // ✅ FILTRAR: No agregar tu propio ID a la lista de remotos
+                        if (pid != playerId) {
+                            UpsertRemotePlayer(pid, px, py, NULL);
+                        }
+                        // Si eres espectador, SÍ agregar todos
+                        else if (observerMode) {
+                            UpsertRemotePlayer(pid, px, py, NULL);
+                        }
+                    }
+                }
 
-                CrearFruta(&gestorFrutas, vine, height, points);
+                // PLAYER_JOINED|<playerId>|<name>
+                if (strncmp(buffer_recepcion, "PLAYER_JOINED|", 14) == 0) {
+                    int pid;
+                    char namebuf[64];
+                    if (sscanf(buffer_recepcion, "PLAYER_JOINED|%d|%63[^\n]", &pid, namebuf) == 2) {
+                        if (pid != playerId || observerMode) {
+                            UpsertRemotePlayer(pid, 50.0f, 100.0f, namebuf);
+                        }
+                    }
+                }
 
-            } else {
-                printf("[Servidor] FRUIT_CREATED formato inválido\n");
+                // PLAYER_LEFT|<playerId>
+                if (strncmp(buffer_recepcion, "PLAYER_LEFT|", 12) == 0) {
+                    int pid;
+                    if (sscanf(buffer_recepcion, "PLAYER_LEFT|%d", &pid) == 1) {
+                        RemoveRemotePlayer(pid);
+                    }
+                }
+
+                // FRUIT_CREATED|<id>|<vine>|<height>|<points>
+                if (strncmp(buffer_recepcion, "FRUIT_CREATED|", 14) == 0) {
+                    int fid, vine, height, points;
+                    if (sscanf(buffer_recepcion, "FRUIT_CREATED|%d|%d|%d|%d",
+                            &fid, &vine, &height, &points) == 4) {
+                        CrearFruta(&gestorFrutas, fid, vine, (float)height, points);
+                        printf("[Servidor] FRUIT_CREATED id=%d vine=%d y=%d pts=%d\n", fid, vine, height, points);
+                    }
+                }
+
+                // FRUIT_DELETED|<id>|<playerId>|<points>
+                if (strncmp(buffer_recepcion, "FRUIT_DELETED|", 14) == 0) {
+                    int fid, pid, points;
+                    if (sscanf(buffer_recepcion, "FRUIT_DELETED|%d|%d|%d", &fid, &pid, &points) >= 2) {
+                        EliminarFrutaPorId(&gestorFrutas, fid);
+                        printf("[Servidor] FRUIT_DELETED id=%d by player=%d points=%d\n", fid, pid, points);
+                    }
+                }
+
+                // SCORE_UPDATE|<playerId>|<score>
+                if (strncmp(buffer_recepcion, "SCORE_UPDATE|", 13) == 0) {
+                    int pid, score;
+                    if (sscanf(buffer_recepcion, "SCORE_UPDATE|%d|%d", &pid, &score) == 2) {
+                        if (pid == playerId) {
+                            puntuacion = score;
+                        }
+                        printf("[Servidor] SCORE_UPDATE player=%d score=%d\n", pid, score);
+                    }
+                }
+
+                // CCA_CREATED (enemigos)
+                if (strncmp(buffer_recepcion, "CCA_CREATED", 11) == 0) {
+                    int vine, height, points;
+                    int nuevoID = gestorEnemigos.proximo_id;
+                    if (sscanf(buffer_recepcion, "CCA_CREATED|%d|%d|%d",
+                            &vine, &height, &points) == 3) {
+                        CrearEnemigoEnLiana(&gestorEnemigos, nuevoID, COCODRILO_AZUL, vine);
+                        gestorEnemigos.proximo_id++;
+                    }
+                }
+
+                // CCR_CREATED (enemigos)
+                if (strncmp(buffer_recepcion, "CCR_CREATED", 11) == 0) {
+                    int vine, height, points;
+                    int nuevoID = gestorEnemigos.proximo_id;
+                    if (sscanf(buffer_recepcion, "CCR_CREATED|%d|%d|%d",
+                            &vine, &height, &points) == 3) {
+                        CrearEnemigoEnLiana(&gestorEnemigos, nuevoID, COCODRILO_ROJO, vine);
+                        gestorEnemigos.proximo_id++;
+                    }
+                }
             }
         }
-
-        if (strncmp(buffer_recepcion, "CCA_CREATED", 11) == 0) {
-            int vine, height, points;
-            int nuevoID = gestorEnemigos.proximo_id;
-
-            if (sscanf(buffer_recepcion, "CCA_CREATED|%d|%d|%d",
-                    &vine, &height, &points) == 3) {
-
-                CrearEnemigoEnLiana(&gestorEnemigos, nuevoID, COCODRILO_AZUL, vine);
-                gestorEnemigos.proximo_id++; // Incrementar para el siguiente enemigo
-
-            } else {
-                printf("[Servidor] CCA_CREATED formato inválido\n");
-            }
-        }
-
-        if (strncmp(buffer_recepcion, "CCR_CREATED", 11) == 0) {
-            int vine, height, points;
-            int nuevoID = gestorEnemigos.proximo_id;
-
-            if (sscanf(buffer_recepcion, "CCR_CREATED|%d|%d|%d",
-                    &vine, &height, &points) == 3) {
-
-                CrearEnemigoEnLiana(&gestorEnemigos, nuevoID, COCODRILO_ROJO, vine);
-                gestorEnemigos.proximo_id++; // Incrementar para el siguiente enemigo
-
-            } else {
-                printf("[Servidor] CCR_CREATED formato inválido\n");
-            }
-        }
-
-    }
-}
         
-        // ===== ACTUALIZAR ENEMIGOS (FUERA DEL BLOQUE DE RECEPCIÓN) =====
+        // ===== ACTUALIZAR ENEMIGOS =====
         ActualizarEnemigos(&gestorEnemigos, GetFrameTime());
         
-        // ===== SISTEMA DE COLISIONES Y VIDAS =====
-        if (juegoActivo && !gameOver) {
-            // Verificar colisión con enemigos
+        // ===== CONTROLES DEL ESPECTADOR =====
+        if (observerMode) {
+            // Tecla TAB: Cambiar entre jugadores
+            if (IsKeyPressed(KEY_TAB)) {
+                int originalId = watchedPlayerId;
+                int attempts = 0;
+                do {
+                    watchedPlayerId++;
+                    if (watchedPlayerId > 2) watchedPlayerId = 1;
+                    attempts++;
+                    
+                    int idx = FindRemoteIndexById(watchedPlayerId);
+                    if (idx >= 0) {
+                        printf("[Espectador] Cambiando a observar Jugador %d\n", watchedPlayerId);
+                        break;
+                    }
+                    
+                } while (attempts < 3);
+                
+                if (attempts >= 3) {
+                    watchedPlayerId = originalId;
+                    printf("[Espectador] No hay otros jugadores disponibles\n");
+                }
+            }
+            
+            // Tecla 1: Observar jugador 1
+            if (IsKeyPressed(KEY_ONE)) {
+                watchedPlayerId = 1;
+                printf("[Espectador] Observando Jugador 1\n");
+            }
+            
+            // Tecla 2: Observar jugador 2
+            if (IsKeyPressed(KEY_TWO)) {
+                watchedPlayerId = 2;
+                printf("[Espectador] Observando Jugador 2\n");
+            }
+            
+            // Tecla A: Ver TODOS los jugadores (toggle)
+            if (IsKeyPressed(KEY_A)) {
+                showAllPlayers = !showAllPlayers;
+                printf("[Espectador] Mostrar todos: %s\n", showAllPlayers ? "SI" : "NO");
+            }
+        }
+        
+        // ===== SISTEMA DE COLISIONES Y VIDAS (solo para jugadores) =====
+        if (!observerMode && juegoActivo && !gameOver) {
+            Rectangle jugadorRect = { cuadradoPos.x, cuadradoPos.y, cuadradoSize, cuadradoSize };
+
+            // Colisión con enemigos
             int enemigoColisionado = VerificarColisionConEnemigos(&gestorEnemigos, cuadradoPos.x, cuadradoPos.y, cuadradoSize, cuadradoSize);
             if (enemigoColisionado != -1) {
                 salud--;
                 printf("[Juego] ¡Colisión con enemigo! Salud: %d/%d\n", salud, VIDA_MAXIMA);
 
-                if (esta_conectado()) {
+                if (esta_conectado() && playerId > 0) {
                     char msg[128];
-                    snprintf(msg, sizeof(msg), "ENEMY_HIT|1|%d|%d", enemigoColisionado, salud);
+                    snprintf(msg, sizeof(msg), "ENEMY_HIT|%d|%d|%d", playerId, enemigoColisionado, 1);
                     enviar_mensaje(msg);
-                    printf("[Socket] Enviado al servidor: %s\n", msg);
                 }
 
-                // Reposicionar jugador
                 cuadradoPos = (Vector2){50, 100};
                 velocidadY = 0;
                 sujetandoLiana = false;
@@ -217,31 +434,52 @@ int main(void) {
                 }
             }
             
-            // Verificar si llegó a la meta
+            // Colisión con frutas
+            for (int i = 0; i < MAX_FRUTAS; i++) {
+                if (!gestorFrutas.frutas[i].activo) continue;
+                
+                if (CheckCollisionRecs(jugadorRect, gestorFrutas.frutas[i].hitbox)) {
+                    int fid = gestorFrutas.frutas[i].id;
+                    int vine = gestorFrutas.frutas[i].liana;
+                    int height = (int)gestorFrutas.frutas[i].posicion.y;
+                    int points = gestorFrutas.frutas[i].puntos;
+                    
+                    if (esta_conectado() && fid >= 0 && playerId > 0) {
+                        char hitMsg[128];
+                        snprintf(hitMsg, sizeof(hitMsg), "HIT|%d|%d", fid, playerId);
+                        enviar_mensaje(hitMsg);
+                        printf("[Socket] Enviado HIT: %s\n", hitMsg);
+                    }
+                    
+                    puntuacion += points;
+                    EliminarFruta(&gestorFrutas, i);
+                }
+            }
+            
+            // Verificar meta
             if (VerificarMeta(mapa, cuadradoPos.x, cuadradoPos.y, cuadradoSize, cuadradoSize)) {
                 nivel++;
-                salud = VIDA_MAXIMA; // Recuperar toda la vida al pasar nivel
+                salud = VIDA_MAXIMA;
                 CambiarNivelEnemigos(&gestorEnemigos, nivel);
                 mostrarMensajeNivel = nivel - 1;
                 tiempoMensaje = 0.0f;
                 
                 printf("[Juego] ¡NIVEL %d COMPLETADO! Pasando al nivel %d\n", nivel-1, nivel);
                 
-                // Reposicionar jugador para nuevo nivel
                 cuadradoPos = (Vector2){50, 100};
                 velocidadY = 0;
                 sujetandoLiana = false;
                 
-                if (conectado && esta_conectado()) {
+                if (conectado && esta_conectado() && playerId > 0) {
                     char mensaje[50];
-                    snprintf(mensaje, sizeof(mensaje), "ACTION|1|LEVEL_UP|%d", nivel);
+                    snprintf(mensaje, sizeof(mensaje), "ACTION|%d|LEVEL_UP|%d", playerId, nivel);
                     enviar_mensaje(mensaje);
                 }
             }
         }
 
         // ===== REINICIAR JUEGO CON R =====
-        if (gameOver && IsKeyPressed(KEY_R)) {
+        if (!observerMode && gameOver && IsKeyPressed(KEY_R)) {
             nivel = 1;
             salud = VIDA_MAXIMA;
             gameOver = false;
@@ -250,7 +488,6 @@ int main(void) {
             sujetandoLiana = false;
             CambiarNivelEnemigos(&gestorEnemigos, nivel);
             
-            // Eliminar todos los enemigos existentes
             for (int i = 0; i < MAX_ENEMIGOS; i++) {
                 if (gestorEnemigos.enemigos[i].activo) {
                     gestorEnemigos.enemigos[i].activo = 0;
@@ -270,44 +507,45 @@ int main(void) {
             }
         }
         
-        // --- MOVIMIENTO HORIZONTAL CON FLECHAS ---
+        // ===== MOVIMIENTO (solo jugadores) =====
         movimientoEnviado = false;
-        if (IsKeyDown(KEY_RIGHT)) {
-            cuadradoPos.x += velocidad;
-            movimientoEnviado = true;
-        }
-        if (IsKeyDown(KEY_LEFT)) {
-            cuadradoPos.x -= velocidad;
-            movimientoEnviado = true;
+        if (!observerMode) {
+            if (IsKeyDown(KEY_RIGHT)) {
+                cuadradoPos.x += velocidad;
+                movimientoEnviado = true;
+            }
+            if (IsKeyDown(KEY_LEFT)) {
+                cuadradoPos.x -= velocidad;
+                movimientoEnviado = true;
+            }
         }
         
-        // --- DETECCIÓN DE ESTADOS ---
+        // Detección de estados
         enSuelo = HayTileDebajo(mapa, cuadradoPos.x, cuadradoPos.y, cuadradoSize, cuadradoSize);
         enAgua = HayAguaDebajo(mapa, cuadradoPos.x, cuadradoPos.y, cuadradoSize, cuadradoSize);
         enLiana = HayLiana(mapa, cuadradoPos.x, cuadradoPos.y, cuadradoSize, cuadradoSize);
         
-        // --- CONTROL MANUAL DE LIANAS (Tecla Z para agarrar/soltar) ---
-        if (enLiana && IsKeyPressed(KEY_Z)) {
+        // Control de lianas
+        if (!observerMode && enLiana && IsKeyPressed(KEY_Z)) {
             sujetandoLiana = !sujetandoLiana;
-            if (conectado && esta_conectado()) {
+            if (conectado && esta_conectado() && playerId > 0) {
                 enviar_mensaje(sujetandoLiana ? "ACTION|1|GRAB_LIANA" : "ACTION|1|RELEASE_LIANA");
             }
         }
         
-        // --- SALTO CON ESPACIO ---
-        if ((enSuelo || sujetandoLiana) && IsKeyPressed(KEY_SPACE)) {
+        // Salto
+        if (!observerMode && (enSuelo || sujetandoLiana) && IsKeyPressed(KEY_SPACE)) {
             velocidadY = fuerzaSalto;
             enSuelo = false;
             sujetandoLiana = false;
             
-            if (conectado && esta_conectado()) {
+            if (conectado && esta_conectado() && playerId > 0) {
                 enviar_mensaje("ACTION|1|JUMP");
             }
         }
         
-        // --- COMPORTAMIENTO EN LIANA (solo si está sujetando) ---
-        if (sujetandoLiana && enLiana) {
-            // Permitir subir y bajar en la liana
+        // Comportamiento en liana
+        if (!observerMode && sujetandoLiana && enLiana) {
             if (IsKeyDown(KEY_UP)) {
                 cuadradoPos.y -= velocidad;
                 movimientoEnviado = true;
@@ -317,43 +555,38 @@ int main(void) {
                 movimientoEnviado = true;
             }
             
-            // Movimiento horizontal reducido en liana
             if (IsKeyDown(KEY_RIGHT)) cuadradoPos.x += velocidad * 0.3f;
             if (IsKeyDown(KEY_LEFT)) cuadradoPos.x -= velocidad * 0.3f;
             
-            // Anular gravedad mientras esté sujetando
             velocidadY = 0;
         }
-        else {
-            // --- COMPORTAMIENTO NORMAL (no sujetando liana) ---
+        else if (!observerMode) {
             sujetandoLiana = false;
-            
-            // Aplicar gravedad
             velocidadY += gravedad;
             cuadradoPos.y += velocidadY;
         }
         
-        // --- ENVÍO DE POSICIÓN AL SERVIDOR ---
-        if (conectado && esta_conectado() && movimientoEnviado) {
+        // Envío de posición
+        if (!observerMode && conectado && esta_conectado() && movimientoEnviado && playerId > 0) {
             char posMsg[100];
-            snprintf(posMsg, sizeof(posMsg), "POS|1|%.0f|%.0f", cuadradoPos.x, cuadradoPos.y);
+            snprintf(posMsg, sizeof(posMsg), "POS|%d|%.1f|%.1f", playerId, cuadradoPos.x, cuadradoPos.y);
             enviar_mensaje(posMsg);
         }
         
-        // --- COMPORTAMIENTO EN AGUA ---
-        if (enAgua) {
+        // Comportamiento en agua
+        if (!observerMode && enAgua) {
             cuadradoPos.x = 50;
             cuadradoPos.y = 600;
             velocidadY = 0;
             sujetandoLiana = false;
             
-            if (conectado && esta_conectado()) {
+            if (conectado && esta_conectado() && playerId > 0) {
                 enviar_mensaje("ACTION|1|WATER_RESPAWN");
             }
         }
         
-        // --- CORRECCIÓN DE COLISIÓN CON SUELO ---
-        if (enSuelo && velocidadY > 0) {
+        // Corrección de colisión con suelo
+        if (!observerMode && enSuelo && velocidadY > 0) {
             int tileY = (int)((cuadradoPos.y + cuadradoSize) / mapa->tileSize);
             cuadradoPos.y = tileY * mapa->tileSize - cuadradoSize;
             velocidadY = 0;
@@ -361,7 +594,7 @@ int main(void) {
             sujetandoLiana = false;
         }
         
-        // Limites de pantalla
+        // Límites de pantalla
         if (cuadradoPos.x < 0) cuadradoPos.x = 0;
         if (cuadradoPos.x > ANCHO_PANTALLA - cuadradoSize) cuadradoPos.x = ANCHO_PANTALLA - cuadradoSize;
         if (cuadradoPos.y < 0) {
@@ -374,32 +607,82 @@ int main(void) {
             velocidadY = -1;
         }
         
-        // --- DIBUJADO ---
+        // ========== DIBUJADO ==========
         BeginDrawing();
             ClearBackground(BLACK);
             
-            // Dibujar mapa
             DibujarMapa(mapa);
-            
-            // Dibujar enemigos
             DibujarEnemigos(&gestorEnemigos);
-
             DibujarFrutas(&gestorFrutas);
 
             // Debug de enemigos
-    DrawText(TextFormat("Enemigos: %d/%d", gestorEnemigos.cantidad_enemigos, MAX_ENEMIGOS), 10, 200, 15, PURPLE);
+            for (int i = 0; i < MAX_ENEMIGOS; i++) {
+                if (gestorEnemigos.enemigos[i].activo) {
+                    DrawRectangleLinesEx(gestorEnemigos.enemigos[i].hitbox, 2, RED);
+                    DrawText(TextFormat("E%d", gestorEnemigos.enemigos[i].id), 
+                        gestorEnemigos.enemigos[i].posicion.x, 
+                        gestorEnemigos.enemigos[i].posicion.y - 20, 10, WHITE);
+                }
+            }
 
-    // Dibujar hitboxes de enemigos (debug visual)
-    for (int i = 0; i < MAX_ENEMIGOS; i++) {
-        if (gestorEnemigos.enemigos[i].activo) {
-            DrawRectangleLinesEx(gestorEnemigos.enemigos[i].hitbox, 2, RED);
-            DrawText(TextFormat("E%d", gestorEnemigos.enemigos[i].id), 
-                gestorEnemigos.enemigos[i].posicion.x, 
-                gestorEnemigos.enemigos[i].posicion.y - 20, 10, WHITE);
-    }
-}
-
-            // Dibujar cuadrado (color según estado)
+            // ========== DIBUJAR JUGADORES ==========
+            if (observerMode) {
+                // ✅ MODO ESPECTADOR
+                
+                if (showAllPlayers) {
+                    // Mostrar TODOS los jugadores
+                    for (int i = 0; i < MAX_REMOTE_PLAYERS; i++) {
+                        if (!remotePlayers[i].activo) continue;
+                        
+                        Color playerColor = (remotePlayers[i].id == 1) ? BLUE : 
+                                           (remotePlayers[i].id == 2) ? RED : GREEN;
+                        
+                        DrawRectangle(remotePlayers[i].pos.x, remotePlayers[i].pos.y, 
+                                     cuadradoSize, cuadradoSize, playerColor);
+                        DrawRectangleLines(remotePlayers[i].pos.x, remotePlayers[i].pos.y, 
+                                          cuadradoSize, cuadradoSize, WHITE);
+                        
+                        const char* label = remotePlayers[i].nombre[0] ? 
+                                           remotePlayers[i].nombre :
+                                           TextFormat("P%d", remotePlayers[i].id);
+                    DrawText(label, remotePlayers[i].pos.x, remotePlayers[i].pos.y - 16, 
+                            10, YELLOW);
+                }
+                
+                DrawText("ESPECTADOR - MOSTRANDO TODOS", 10, 35, 15, GREEN);
+                
+            } else {
+                // Mostrar SOLO el jugador seleccionado
+                int targetIdx = FindRemoteIndexById(watchedPlayerId);
+                
+                if (targetIdx >= 0 && remotePlayers[targetIdx].activo) {
+                    Color playerColor = (watchedPlayerId == 1) ? BLUE : 
+                                       (watchedPlayerId == 2) ? RED : GREEN;
+                    
+                    float px = remotePlayers[targetIdx].pos.x;
+                    float py = remotePlayers[targetIdx].pos.y;
+                    
+                    DrawRectangle(px, py, cuadradoSize, cuadradoSize, playerColor);
+                    DrawRectangleLines(px, py, cuadradoSize, cuadradoSize, WHITE);
+                    
+                    const char* label = remotePlayers[targetIdx].nombre[0] ? 
+                                       remotePlayers[targetIdx].nombre : 
+                                       TextFormat("P%d", watchedPlayerId);
+                    DrawText(label, px, py - 16, 10, YELLOW);
+                    
+                    DrawText(TextFormat("OBSERVANDO: Jugador %d", watchedPlayerId), 
+                            10, 35, 15, GREEN);
+                } else {
+                    DrawText(TextFormat("Esperando Jugador %d...", watchedPlayerId), 
+                            ANCHO_PANTALLA/2 - 100, ALTO_PANTALLA/2, 20, YELLOW);
+                    DrawText("MODO ESPECTADOR", 10, 35, 15, ORANGE);
+                }
+            }
+            
+        } else {
+            // ✅ MODO JUGADOR
+            
+            // Dibujar jugador LOCAL
             Color colorCuadrado = BLUE;
             if (conectado && esta_conectado()) colorCuadrado = GREEN;
             if (enLiana && !sujetandoLiana) colorCuadrado = ORANGE;
@@ -408,61 +691,84 @@ int main(void) {
             
             DrawRectangle(cuadradoPos.x, cuadradoPos.y, cuadradoSize, cuadradoSize, colorCuadrado);
             DrawRectangleLines(cuadradoPos.x, cuadradoPos.y, cuadradoSize, cuadradoSize, WHITE);
+            DrawText(TextFormat("P%d (TÚ)", playerId), cuadradoPos.x, cuadradoPos.y - 16, 10, LIME);
             
-            // UI de debug y estado
-            DrawText("DON CEY KONG JR - ONLINE", 10, 10, 20, YELLOW);
-            
-            // Estado de conexión
-            if (conectado && esta_conectado()) {
-                DrawText("CONECTADO AL SERVIDOR", 10, 35, 15, GREEN);
-            } else {
-                DrawText("MODO OFFLINE", 10, 35, 15, RED);
+            // Dibujar OTROS jugadores (remotos)
+            for (int i = 0; i < MAX_REMOTE_PLAYERS; i++) {
+                if (!remotePlayers[i].activo) continue;
+                if (remotePlayers[i].id == playerId) continue;
+                
+                Color remoteColor = (remotePlayers[i].id == 1) ? DARKBLUE : 
+                                   (remotePlayers[i].id == 2) ? DARKPURPLE : DARKGREEN;
+                
+                DrawRectangle(remotePlayers[i].pos.x, remotePlayers[i].pos.y, 
+                             cuadradoSize, cuadradoSize, remoteColor);
+                DrawRectangleLines(remotePlayers[i].pos.x, remotePlayers[i].pos.y, 
+                                  cuadradoSize, cuadradoSize, ORANGE);
+                
+                const char* label = remotePlayers[i].nombre[0] ? 
+                                   remotePlayers[i].nombre : 
+                                   TextFormat("P%d", remotePlayers[i].id);
+                DrawText(label, remotePlayers[i].pos.x, remotePlayers[i].pos.y - 16, 
+                        10, ORANGE);
             }
-            
-            // Información del juego
-            DrawText(TextFormat("Posicion: (%.0f, %.0f)", cuadradoPos.x, cuadradoPos.y), 10, 55, 15, GREEN);
+        }
+        
+        // ========== UI ==========
+        DrawText("DON CEY KONG JR - ONLINE", 10, 10, 20, YELLOW);
+        
+        if (conectado && esta_conectado()) {
+            DrawText(observerMode ? "ESPECTADOR CONECTADO" : "CONECTADO AL SERVIDOR", 10, 35, 15, GREEN);
+        } else {
+            DrawText("MODO OFFLINE", 10, 35, 15, RED);
+        }
+        
+        if (!observerMode) {
+            DrawText(TextFormat("Posicion: (%.1f, %.1f)", cuadradoPos.x, cuadradoPos.y), 10, 55, 15, GREEN);
             DrawText(TextFormat("En suelo: %s", enSuelo ? "SI" : "NO"), 10, 75, 15, enSuelo ? GREEN : RED);
             DrawText(TextFormat("Liana disponible: %s", enLiana ? "SI" : "NO"), 10, 95, 15, enLiana ? ORANGE : RED);
             DrawText(TextFormat("Sujetando liana: %s", sujetandoLiana ? "SI" : "NO"), 10, 115, 15, sujetandoLiana ? GREEN : RED);
             DrawText(TextFormat("En agua: %s", enAgua ? "SI" : "NO"), 10, 135, 15, enAgua ? BLUE : RED);
-            
-            // Información de nivel y salud
             DrawText(TextFormat("Nivel: %d", nivel), 10, 155, 15, YELLOW);
             DrawText(TextFormat("Salud: %d/%d", salud, VIDA_MAXIMA), 10, 175, 15, 
                     (salud == 3) ? GREEN : (salud == 2) ? YELLOW : RED);
-            
-            // Información de enemigos
-            DrawText(TextFormat("Enemigos activos: %d", gestorEnemigos.cantidad_enemigos), 10, 195, 15, PURPLE);
-            
-            // Mensaje de nivel completado
-            if (mostrarMensajeNivel > 0) {
-                DrawText(TextFormat("¡NIVEL %d COMPLETADO!", mostrarMensajeNivel), 
-                        ANCHO_PANTALLA/2 - 150, 50, 30, GREEN);
-            }
-            
-            // Mensaje de Game Over
-            if (gameOver) {
-                DrawRectangle(0, 0, ANCHO_PANTALLA, ALTO_PANTALLA, (Color){0, 0, 0, 200});
-                DrawText("¡GAME OVER!", ANCHO_PANTALLA/2 - 150, ALTO_PANTALLA/2 - 50, 40, RED);
-                DrawText(TextFormat("Alcanzaste el nivel %d", nivel), ANCHO_PANTALLA/2 - 120, ALTO_PANTALLA/2, 20, WHITE);
-                DrawText("Presiona R para reiniciar", ANCHO_PANTALLA/2 - 100, ALTO_PANTALLA/2 + 50, 20, GREEN);
-            }
-            
-            // Controles
-            DrawText("Flechas: mover | ESPACIO: saltar | Z: agarrar/soltar liana", 10, 215, 12, RED);
-            DrawText("Presiona ESC para salir", 10, ALTO_PANTALLA - 25, 15, WHITE);
-            
-        EndDrawing();
-    }
-    
-    // Limpieza
-    if (conectado) {
-        desconectar_servidor();
-    }
-    LiberarTexturasEnemigos(&gestorEnemigos);
-    LiberarMapa(mapa);
-    CloseWindow();
-    
-    printf("=== JUEGO TERMINADO ===\n");
-    return 0;
+            DrawText(TextFormat("Puntuacion: %d", puntuacion), 10, 195, 18, GOLD);
+        }
+        
+        DrawText(TextFormat("Enemigos: %d/%d", gestorEnemigos.cantidad_enemigos, MAX_ENEMIGOS), 10, 220, 15, PURPLE);
+        
+        if (mostrarMensajeNivel > 0) {
+            DrawText(TextFormat("¡NIVEL %d COMPLETADO!", mostrarMensajeNivel), 
+                    ANCHO_PANTALLA/2 - 150, 50, 30, GREEN);
+        }
+        
+        if (gameOver) {
+            DrawRectangle(0, 0, ANCHO_PANTALLA, ALTO_PANTALLA, (Color){0, 0, 0, 200});
+            DrawText("¡GAME OVER!", ANCHO_PANTALLA/2 - 150, ALTO_PANTALLA/2 - 50, 40, RED);
+            DrawText(TextFormat("Alcanzaste el nivel %d", nivel), ANCHO_PANTALLA/2 - 120, ALTO_PANTALLA/2, 20, WHITE);
+            DrawText("Presiona R para reiniciar", ANCHO_PANTALLA/2 - 100, ALTO_PANTALLA/2 + 50, 20, GREEN);
+        }
+        
+        // Controles
+        if (observerMode) {
+            DrawText("TAB: cambiar jugador | 1/2: seleccionar | A: ver todos | ESC: salir", 
+                    10, ALTO_PANTALLA - 25, 12, YELLOW);
+        } else {
+            DrawText("Flechas: mover | ESPACIO: saltar | Z: liana | ESC: salir", 
+                    10, ALTO_PANTALLA - 25, 12, RED);
+        }
+        
+    EndDrawing();
+}
+
+// Limpieza
+if (conectado) {
+    desconectar_servidor();
+}
+LiberarTexturasEnemigos(&gestorEnemigos);
+LiberarMapa(mapa);
+CloseWindow();
+
+printf("=== JUEGO TERMINADO ===\n");
+return 0;
 }

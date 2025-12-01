@@ -3,16 +3,18 @@
 
 void InicializarFrutas(GestorFrutas* gestor) {
     gestor->cantidad_frutas = 0;
-    for (int i = 0; i < 50; i++) {
+    for (int i = 0; i < MAX_FRUTAS; i++) {
         gestor->frutas[i].activo = 0;
+        gestor->frutas[i].id = -1;
     }
 }
 
-int CrearFruta(GestorFrutas* gestor, int liana, float y, int puntos) {
-    for (int i = 0; i < 50; i++) {
+int CrearFruta(GestorFrutas* gestor, int id, int liana, float y, int puntos) {
+    for (int i = 0; i < MAX_FRUTAS; i++) {
         if (!gestor->frutas[i].activo) {
 
             gestor->frutas[i].activo = 1;
+            gestor->frutas[i].id = id; // id puede ser -1 si es local/offline
             gestor->frutas[i].liana = liana;
             gestor->frutas[i].puntos = puntos;
             int xPos;
@@ -54,7 +56,7 @@ int CrearFruta(GestorFrutas* gestor, int liana, float y, int puntos) {
             };
 
             gestor->cantidad_frutas++;
-            printf("[Fruta] Creada en liana %d\n", liana);
+            printf("[Fruta] Creada en liana %d (index=%d, id=%d)\n", liana, i, id);
 
             return i;  // devolvemos el índice como “handle”
         }
@@ -63,7 +65,7 @@ int CrearFruta(GestorFrutas* gestor, int liana, float y, int puntos) {
 }
 
 void DibujarFrutas(GestorFrutas* gestor) {
-    for (int i = 0; i < 50; i++) {
+    for (int i = 0; i < MAX_FRUTAS; i++) {
         if (gestor->frutas[i].activo) {
             DrawCircle(gestor->frutas[i].posicion.x + 10,
                        gestor->frutas[i].posicion.y + 10,
@@ -71,16 +73,32 @@ void DibujarFrutas(GestorFrutas* gestor) {
                        RED);
 
             DrawRectangleLinesEx(gestor->frutas[i].hitbox, 1, YELLOW);
+            // Dibujar id (debug)
+            #ifdef DEBUG
+            DrawText(TextFormat("ID:%d", gestor->frutas[i].id), gestor->frutas[i].posicion.x, gestor->frutas[i].posicion.y - 12, 8, WHITE);
+            #endif
         }
     }
 }
 
 void EliminarFruta(GestorFrutas* gestor, int index) {
-    if (index < 0 || index >= 50) return;
+    if (index < 0 || index >= MAX_FRUTAS) return;
 
     if (gestor->frutas[index].activo) {
+        printf("[Fruta] Eliminada índice %d (id=%d)\n", index, gestor->frutas[index].id);
         gestor->frutas[index].activo = 0;
+        gestor->frutas[index].id = -1;
         gestor->cantidad_frutas--;
-        printf("[Fruta] Eliminada índice %d\n", index);
     }
+}
+
+void EliminarFrutaPorId(GestorFrutas* gestor, int id) {
+    if (id < 0) return;
+    for (int i = 0; i < MAX_FRUTAS; i++) {
+        if (gestor->frutas[i].activo && gestor->frutas[i].id == id) {
+            EliminarFruta(gestor, i);
+            return;
+        }
+    }
+    // Si no se encontró, ignorar
 }
