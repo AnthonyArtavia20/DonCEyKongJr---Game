@@ -2,6 +2,7 @@ package GameServer.DonkeyKong.Game;
 
 import GameServer.DonkeyKong.Game.factory.*;
 import GameServer.DonkeyKong.Game.model.*;
+import GameServer.DonkeyKong.Game.Observer.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -17,6 +18,9 @@ public class GameLogic {
     // ===== FACTORY PATTERN =====
     private EnemyFactory currentFactory;
     private int currentLevel;
+    
+    // ===== OBSERVER PATTERN =====
+    private final BroadcastManager broadcastManager;
     
     // ===== COLECCIONES THREAD-SAFE =====
     private final CopyOnWriteArrayList<Enemy> enemies;
@@ -59,6 +63,9 @@ public class GameLogic {
         
         this.nextEnemyId = new AtomicInteger(1);
         this.nextFruitId = new AtomicInteger(1);
+        
+        // Inicializar el BroadcastManager (Singleton)
+        this.broadcastManager = BroadcastManager.getInstance();
         
         System.out.println("[GameLogic] Inicializado - Nivel 1, Factory: Level1EnemyFactory");
     }
@@ -119,12 +126,32 @@ public class GameLogic {
     public void addPlayer(int id, String name) {
         players.put(id, new PlayerState(name));
         System.out.println("[GameLogic] Jugador agregado: " + name + " (ID: " + id + ")");
+        
+        // DISPARAR EVENTO: PLAYER_JOINED
+        GameEvent event = new GameEvent(
+            GameEvent.EventType.PLAYER_JOINED,
+            this,
+            "Jugador " + name + " se conectó",
+            id,
+            -1
+        );
+        broadcastManager.notify(event);
     }
     
     public void removePlayer(int id) {
         PlayerState removed = players.remove(id);
         if (removed != null) {
             System.out.println("[GameLogic] Jugador removido: " + removed.name + " (ID: " + id + ")");
+            
+            // DISPARAR EVENTO: PLAYER_LEFT
+            GameEvent event = new GameEvent(
+                GameEvent.EventType.PLAYER_LEFT,
+                this,
+                "Jugador " + removed.name + " se desconectó",
+                id,
+                -1
+            );
+            broadcastManager.notify(event);
         }
     }
     
@@ -158,6 +185,16 @@ public class GameLogic {
         
         System.out.println("[GameLogic] Cocodrilo ROJO creado - ID: " + id + 
                           ", Liana: " + vineId + ", Nivel: " + currentLevel);
+        
+        // DISPARAR EVENTO: ENEMY_SPAWNED
+        GameEvent event = new GameEvent(
+            GameEvent.EventType.ENEMY_SPAWNED,
+            this,
+            "RedCrocodile creado en liana " + vineId,
+            -1,
+            id
+        );
+        broadcastManager.notify(event);
     }
     
     public void createBlueCrocodile(int vineId, float speed) {
@@ -176,6 +213,16 @@ public class GameLogic {
         
         System.out.println("[GameLogic] Cocodrilo AZUL creado - ID: " + id + 
                           ", Liana: " + vineId + ", Nivel: " + currentLevel);
+        
+        // DISPARAR EVENTO: ENEMY_SPAWNED
+        GameEvent event = new GameEvent(
+            GameEvent.EventType.ENEMY_SPAWNED,
+            this,
+            "BlueCrocodile creado en liana " + vineId,
+            -1,
+            id
+        );
+        broadcastManager.notify(event);
     }
     
     public void createFruit(int vineId, int height, int points) {
@@ -193,6 +240,16 @@ public class GameLogic {
         System.out.println("[GameLogic] Fruta creada - ID: " + id + 
                           ", Liana: " + vineId + ", Y: " + height + 
                           ", Puntos: " + fruit.getPoints());
+        
+        // DISPARAR EVENTO: FRUIT_SPAWNED
+        GameEvent event = new GameEvent(
+            GameEvent.EventType.FRUIT_SPAWNED,
+            this,
+            "Fruta creada en liana " + vineId + " con " + fruit.getPoints() + " puntos",
+            -1,
+            id
+        );
+        broadcastManager.notify(event);
     }
     
     public boolean deleteFruit(int vineId, int height) {
@@ -203,6 +260,17 @@ public class GameLogic {
                 
                 fruits.remove(fruit);
                 System.out.println("[GameLogic] Fruta eliminada - ID: " + fruit.getId());
+                
+                // DISPARAR EVENTO: FRUIT_COLLECTED
+                GameEvent event = new GameEvent(
+                    GameEvent.EventType.FRUIT_COLLECTED,
+                    this,
+                    "Fruta recolectada, puntos: " + fruit.getPoints(),
+                    -1,
+                    fruit.getId()
+                );
+                broadcastManager.notify(event);
+                
                 return true;
             }
         }
@@ -225,12 +293,33 @@ public class GameLogic {
                           " golpeado por enemigo " + enemyId + 
                           " - Vidas: " + player.lives);
         
+        // DISPARAR EVENTO: COLLISION_DETECTED
+        GameEvent collisionEvent = new GameEvent(
+            GameEvent.EventType.COLLISION_DETECTED,
+            this,
+            "Colisión entre jugador " + player.name + " y enemigo " + enemyId,
+            playerId,
+            enemyId
+        );
+        broadcastManager.notify(collisionEvent);
+        
         // Buscar y eliminar el enemigo
         for (Enemy enemy : enemies) {
             if (enemy.getId() == enemyId) {
                 enemy.setActive(false);
                 enemies.remove(enemy);
                 System.out.println("[GameLogic] Enemigo " + enemyId + " eliminado tras colisión");
+                
+                // DISPARAR EVENTO: ENEMY_DEFEATED
+                GameEvent defeatedEvent = new GameEvent(
+                    GameEvent.EventType.ENEMY_DEFEATED,
+                    this,
+                    "Enemigo " + enemyId + " fue derrotado",
+                    playerId,
+                    enemyId
+                );
+                broadcastManager.notify(defeatedEvent);
+                
                 break;
             }
         }
@@ -238,7 +327,16 @@ public class GameLogic {
         // Si el jugador murió
         if (player.lives <= 0) {
             System.out.println("[GameLogic] Jugador " + player.name + " MUERTO");
-            // Aquí puedes disparar un evento Observer
+            
+            // DISPARAR EVENTO: PLAYER_DIED
+            GameEvent diedEvent = new GameEvent(
+                GameEvent.EventType.PLAYER_DIED,
+                this,
+                "Jugador " + player.name + " ha muerto",
+                playerId,
+                -1
+            );
+            broadcastManager.notify(diedEvent);
         }
     }
     
@@ -262,6 +360,16 @@ public class GameLogic {
         
         System.out.println("[GameLogic] Nivel cambiado a " + newLevel + 
                           " - Factory: " + currentFactory.getClass().getSimpleName());
+        
+        // DISPARAR EVENTO: LEVEL_CHANGED
+        GameEvent event = new GameEvent(
+            GameEvent.EventType.LEVEL_CHANGED,
+            this,
+            "Nivel cambió a " + newLevel,
+            -1,
+            newLevel
+        );
+        broadcastManager.notify(event);
     }
     
     // ===== UTILIDADES =====
@@ -282,5 +390,26 @@ public class GameLogic {
     
     public int getFruitCount() {
         return fruits.size();
+    }
+    
+    /**
+     * Permite suscribir un observador para recibir eventos del juego
+     */
+    public void subscribe(GameObserver observer) {
+        broadcastManager.subscribe(observer);
+    }
+    
+    /**
+     * Permite desuscribir un observador
+     */
+    public void unsubscribe(GameObserver observer) {
+        broadcastManager.unsubscribe(observer);
+    }
+    
+    /**
+     * Retorna la instancia del BroadcastManager para acceso directo
+     */
+    public BroadcastManager getBroadcastManager() {
+        return broadcastManager;
     }
 }
