@@ -34,7 +34,7 @@ if ! command -v javac &> /dev/null; then
     exit 1
 fi
 
-javac -d bin CoreGenericServer/*.java DonkeyKong/Game/*.java DonkeyKong/Server/*.java
+javac -d bin CoreGenericServer/*.java DonkeyKong/Game/*.java DonkeyKong/Game/model/*.java DonkeyKong/Game/factory/*.java DonkeyKong/Game/Observer/*.java DonkeyKong/Server/*.java
 echo "✅ Servidor Java compilado"
 cd ..
 echo ""
