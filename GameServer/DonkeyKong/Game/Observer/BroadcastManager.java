@@ -7,12 +7,13 @@ import java.util.concurrent.Executors;
 /**
  * Subject del patrón Observer - Gestiona los observadores y notifica eventos
  * Es thread-safe para uso en entornos concurrentes
+ * Cada sala tiene su propia instancia (no es más Singleton)
  * 
  * @author Anthony Artavia & Ariel Saborio
  */
 public class BroadcastManager {
     
-    private static final BroadcastManager instance = new BroadcastManager();
+    private static final BroadcastManager globalInstance = new BroadcastManager();
     
     // Lista thread-safe de observadores
     private final CopyOnWriteArrayList<GameObserver> observers;
@@ -24,7 +25,7 @@ public class BroadcastManager {
     private boolean verbose = true;
     
     /**
-     * Constructor privado - Singleton pattern
+     * Constructor privado - para instancia global
      */
     private BroadcastManager() {
         this.observers = new CopyOnWriteArrayList<>();
@@ -32,10 +33,19 @@ public class BroadcastManager {
     }
     
     /**
-     * Obtiene la instancia única del BroadcastManager (Singleton)
+     * Constructor público - para crear instancias per-sala
+     */
+    public BroadcastManager(boolean isPublic) {
+        this.observers = new CopyOnWriteArrayList<>();
+        this.executor = Executors.newFixedThreadPool(4); // Pool de 4 threads
+    }
+    
+    /**
+     * Obtiene la instancia global del BroadcastManager (Singleton global - deprecated)
+     * Se mantiene por compatibilidad pero no se recomienda usar
      */
     public static BroadcastManager getInstance() {
-        return instance;
+        return globalInstance;
     }
     
     /**

@@ -16,18 +16,12 @@ public class DonkeyKongServer extends GameServer {
     
     private final ConcurrentHashMap<Integer, GameRoom> gameRooms = new ConcurrentHashMap<>();
     private final AtomicInteger nextRoomId = new AtomicInteger(1);
-    private final AtomicInteger nextFruitId = new AtomicInteger(1);
     private int spectatorCount = 0;
-    private int playerCount = 0; // Añadido: Contador de jugadores
-    
-    // Añadir estas variables para compatibilidad con el CLI
-    private GameLogic globalGameLogic = null; // Solo para referencia en CLI
-    private ConcurrentHashMap<Integer, int[]> fruitMap = new ConcurrentHashMap<>(); // Solo para CLI
+    private int playerCount = 0; // Contador de jugadores activos
 
     // Clase interna para representar una sala de juego
     private static class GameRoom {
         final int roomId;
-        final int playerId;
         final GameLogic gameLogic;
         final ConcurrentHashMap<Integer, int[]> fruitMap;
         final ConcurrentLinkedQueue<MessageProtocol.Message> gameEvents;
@@ -37,7 +31,6 @@ public class DonkeyKongServer extends GameServer {
         
         GameRoom(int roomId, int playerId, String playerName) {
             this.roomId = roomId;
-            this.playerId = playerId;
             this.playerName = playerName;
             this.gameLogic = new GameLogic();
             this.fruitMap = new ConcurrentHashMap<>();
@@ -58,7 +51,7 @@ public class DonkeyKongServer extends GameServer {
             
             if (gameLogic != null) {
                 gameLogic.createFruit(vine, height, points);
-                System.out.println("[DEBUG] Fruta creada en GameLogic: id=" + fid + ", vine=" + vine + ", height=" + height);
+                // System.out.println("[DEBUG] Fruta creada en GameLogic: id=" + fid + ", vine=" + vine + ", height=" + height);
             }
             
             return fid;
@@ -78,10 +71,10 @@ public class DonkeyKongServer extends GameServer {
             if (gameLogic != null) {
                 if (type.equals("RED")) {
                     gameLogic.createRedCrocodile(vine, speed);
-                    System.out.println("[DEBUG] Cocodrilo ROJO creado en GameLogic: vine=" + vine);
+                    // System.out.println("[DEBUG] Cocodrilo ROJO creado en GameLogic: vine=" + vine);
                 } else if (type.equals("BLUE")) {
                     gameLogic.createBlueCrocodile(vine, speed);
-                    System.out.println("[DEBUG] Cocodrilo AZUL creado en GameLogic: vine=" + vine);
+                    // System.out.println("[DEBUG] Cocodrilo AZUL creado en GameLogic: vine=" + vine);
                 }
             }
         }
@@ -136,9 +129,6 @@ public class DonkeyKongServer extends GameServer {
 
     public DonkeyKongServer(ServerConfig config) {
         super(config);
-        // Inicializar GameLogic global para CLI
-        globalGameLogic = new GameLogic();
-        globalGameLogic.changeLevel(1);
     }
     
     public DonkeyKongServer(int port) {
@@ -220,9 +210,8 @@ public class DonkeyKongServer extends GameServer {
                 // Limpiar eventos procesados
                 room.clearGameLogicEvents();
                 
-                // Broadcast estado actualizado a todos en la sala
-                String gameState = room.gameLogic.serialize();
-                broadcastToRoom(room.roomId, gameState);
+                // NO enviar GAMESTATE completo en cada frame (causa lag masivo)
+                // Solo enviar cuando hay cambios (POS, FRUITS, ENEMIES, etc)
             }
         }
     }
@@ -233,11 +222,10 @@ public class DonkeyKongServer extends GameServer {
     public void broadcastToRoom(int roomId, String message) {
     if (message == null || message.isEmpty()) return;
     
-    // Solo mostrar debug para comandos importantes
+    // Solo mostrar debug para comandos importantes (NO para POS para reducir spam de logs)
     boolean showDebug = message.startsWith("FRUIT_") || 
                        message.startsWith("CCA_") || 
                        message.startsWith("CCR_") ||
-                       message.startsWith("PLAYER_") ||
                        message.startsWith("SCORE_") ||
                        message.startsWith("OK|") ||
                        message.startsWith("ERROR");
@@ -405,7 +393,6 @@ public class DonkeyKongServer extends GameServer {
                 
             case "ACTION": {
                 if (m.hasParams(3)) {
-                    int pid = m.getParamAsInt(0, -1);
                     String action = m.getParam(1);
                     String param = m.getParam(2);
                     
@@ -519,10 +506,13 @@ public class DonkeyKongServer extends GameServer {
             System.out.println("[DK] Espectador conectado: " + name + 
                 " (Observando Sala: " + targetRoomId + ")");
             
-            // Enviar estado actual de la sala al espectador
+            // Enviar estado actual de la sala al espectador (todos los enemigos y frutas activos)
             if (targetRoom.gameLogic != null) {
-                String state = targetRoom.gameLogic.serialize();
-                sendTo(client, state);
+                List<String> initialMessages = targetRoom.gameLogic.getInitialStateMessages(targetRoomId);
+                for (String msg : initialMessages) {
+                    sendTo(client, msg);
+                }
+                System.out.println("[DK] Enviados " + initialMessages.size() + " mensajes iniciales al espectador en sala " + targetRoomId);
             }
             
         } else if (type.equals("ADMIN")) {

@@ -6,6 +6,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <math.h>
 #include "fruta.h"
 
 #define ANCHO_PANTALLA 1200
@@ -276,6 +277,17 @@ int main(int argc, char** argv) {
     const float gravedad = 0.5f;
     const float fuerzaSalto = -12.0f;
     
+    // Invencibilidad temporal tras respawn
+    bool invencible = true;
+    float tiempoInvencibilidad = 0.0f;
+    const float DURACION_INVENCIBILIDAD = 2.0f; // 2 segundos de invencibilidad
+    
+    // Optimización: enviar POS solo cada 100ms (10 veces por segundo, no 60)
+    Vector2 lastSentPos = {50, 100};
+    float timeSinceLastPosSent = 0.0f;
+    const float POS_SEND_INTERVAL = 0.1f; // 100ms
+    const float POS_CHANGE_THRESHOLD = 5.0f; // 5 píxeles de cambio para enviar
+    
     char buffer_recepcion[4096];
     bool movimientoEnviado = false;
 
@@ -290,14 +302,14 @@ int main(int argc, char** argv) {
         if (bytes < (int)sizeof(buffer_recepcion)) buffer_recepcion[bytes] = '\0';
         else buffer_recepcion[sizeof(buffer_recepcion)-1] = '\0';
 
-        printf("[Socket] Recibido: %s\n", buffer_recepcion);
+        // printf("[Socket] Recibido: %s\n", buffer_recepcion); // Comentado para reducir lag
 
         if (!EsParaMiSala(buffer_recepcion, targetRoomId, playerId, observerMode)) {
-            printf("[DEBUG] Mensaje ignorado (no es para sala %d): %s\n", targetRoomId, buffer_recepcion);
+            // printf("[DEBUG] Mensaje ignorado (no es para sala %d): %s\n", targetRoomId, buffer_recepcion); // Comentado
             continue;
         }
         
-        printf("[DEBUG Sala %d] Mensaje recibido: %s\n", targetRoomId, buffer_recepcion);
+        // printf("[DEBUG Sala %d] Mensaje recibido: %s\n", targetRoomId, buffer_recepcion); // Comentado
 
                 // OK con PLAYER_ID
                 if (strncmp(buffer_recepcion, "OK|PLAYER_ID|", 13) == 0) {
@@ -528,29 +540,46 @@ int main(int argc, char** argv) {
             }
         }
         
+        // ===== ACTUALIZAR INVENCIBILIDAD =====
+        if (invencible) {
+            tiempoInvencibilidad += GetFrameTime();
+            if (tiempoInvencibilidad >= DURACION_INVENCIBILIDAD) {
+                invencible = false;
+                tiempoInvencibilidad = 0.0f;
+                printf("[Juego] Invencibilidad finalizada\n");
+            }
+        }
+        
         // ===== SISTEMA DE COLISIONES Y VIDAS (solo para jugadores) =====
         if (!observerMode && juegoActivo && !gameOver) {
             Rectangle jugadorRect = { cuadradoPos.x, cuadradoPos.y, cuadradoSize, cuadradoSize };
 
-            // Colisión con enemigos
-            int enemigoColisionado = VerificarColisionConEnemigos(&gestorEnemigos, cuadradoPos.x, cuadradoPos.y, cuadradoSize, cuadradoSize);
-            if (enemigoColisionado != -1) {
-                salud--;
-                printf("[Juego] ¡Colisión con enemigo! Salud: %d/%d\n", salud, VIDA_MAXIMA);
+            // Colisión con enemigos (SOLO si NO está invencible)
+            if (!invencible) {
+                int enemigoColisionado = VerificarColisionConEnemigos(&gestorEnemigos, cuadradoPos.x, cuadradoPos.y, cuadradoSize, cuadradoSize);
+                if (enemigoColisionado != -1) {
+                    salud--;
+                    printf("[Juego] ¡Colisión con enemigo! Salud: %d/%d\n", salud, VIDA_MAXIMA);
 
-                if (esta_conectado() && playerId > 0) {
-                    char msg[128];
-                    snprintf(msg, sizeof(msg), "ENEMY_HIT|%d|%d|%d", playerId, enemigoColisionado, 1);
-                    enviar_mensaje(msg);
-                }
+                    if (esta_conectado() && playerId > 0) {
+                        char msg[128];
+                        snprintf(msg, sizeof(msg), "ENEMY_HIT|%d|%d|%d", playerId, enemigoColisionado, 1);
+                        enviar_mensaje(msg);
+                    }
 
-                cuadradoPos = (Vector2){50, 100};
-                velocidadY = 0;
-                sujetandoLiana = false;
-                
-                if (salud <= 0) {
-                    gameOver = true;
-                    printf("[Juego] ¡GAME OVER!\n");
+                    cuadradoPos = (Vector2){50, 100};
+                    velocidadY = 0;
+                    sujetandoLiana = false;
+                    
+                    // Reiniciar invencibilidad tras respawn
+                    invencible = true;
+                    tiempoInvencibilidad = 0.0f;
+                    printf("[Juego] Invencibilidad activada por 2 segundos\n");
+                    
+                    if (salud <= 0) {
+                        gameOver = true;
+                        printf("[Juego] ¡GAME OVER!\n");
+                    }
                 }
             }
             
@@ -686,11 +715,24 @@ int main(int argc, char** argv) {
             cuadradoPos.y += velocidadY;
         }
         
-        // Envío de posición
-        if (!observerMode && conectado && esta_conectado() && movimientoEnviado && playerId > 0) {
-            char posMsg[100];
-            snprintf(posMsg, sizeof(posMsg), "POS|%d|%.1f|%.1f", playerId, cuadradoPos.x, cuadradoPos.y);
-            enviar_mensaje(posMsg);
+        // Envío de posición (OPTIMIZADO: solo cada 100ms o si cambio es significativo)
+        if (!observerMode && conectado && esta_conectado() && playerId > 0) {
+            timeSinceLastPosSent += GetFrameTime();
+            
+            // Calcular distancia desde última posición enviada
+            float dx = cuadradoPos.x - lastSentPos.x;
+            float dy = cuadradoPos.y - lastSentPos.y;
+            float distance = sqrt(dx*dx + dy*dy);
+            
+            // Enviar si: pasó intervalo de tiempo O cambio es significativo
+            if (timeSinceLastPosSent >= POS_SEND_INTERVAL || distance >= POS_CHANGE_THRESHOLD) {
+                char posMsg[100];
+                snprintf(posMsg, sizeof(posMsg), "POS|%d|%.1f|%.1f", playerId, cuadradoPos.x, cuadradoPos.y);
+                enviar_mensaje(posMsg);
+                
+                lastSentPos = cuadradoPos;
+                timeSinceLastPosSent = 0.0f;
+            }
         }
         
         // Comportamiento en agua
@@ -814,10 +856,21 @@ int main(int argc, char** argv) {
                 if (sujetandoLiana) colorCuadrado = YELLOW;
                 if (enAgua) colorCuadrado = SKYBLUE;
                 
+                // Si está invencible, hacer que parpadee
+                if (invencible && (int)(tiempoInvencibilidad * 10) % 2 == 0) {
+                    colorCuadrado.a = 100; // Semi-transparente cuando parpadea
+                }
+                
                 DrawRectangle(cuadradoPos.x, cuadradoPos.y, cuadradoSize, cuadradoSize, colorCuadrado);
                 DrawRectangleLines(cuadradoPos.x, cuadradoPos.y, cuadradoSize, cuadradoSize, WHITE);
                 DrawText(TextFormat("P%d (TÚ) - Sala %d", playerId, targetRoomId), 
                         cuadradoPos.x, cuadradoPos.y - 16, 10, LIME);
+                
+                // Mostrar indicador de invencibilidad
+                if (invencible) {
+                    DrawText(TextFormat("INVENCIBLE %.1fs", DURACION_INVENCIBILIDAD - tiempoInvencibilidad), 
+                            cuadradoPos.x, cuadradoPos.y - 32, 10, YELLOW);
+                }
                 
                 // Dibujar OTROS jugadores (remotos) de NUESTRA SALA
                 for (int i = 0; i < MAX_REMOTE_PLAYERS; i++) {

@@ -18,7 +18,7 @@ fi
 echo "🎮 Lanzando cliente..."
 echo ""
 
-# ✅ Pasar todos los argumentos al ejecutable
+# Pasar todos los argumentos al ejecutable
 ./DonCEyKongJrClient.exe "$@"
 
 cd ../../../
