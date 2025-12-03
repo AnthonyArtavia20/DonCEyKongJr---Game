@@ -285,17 +285,19 @@ int main(int argc, char** argv) {
     while (!WindowShouldClose()) {
         // ===== RECIBIR MENSAJES DEL SERVIDOR =====
         if (conectado && esta_conectado()) {
-            int bytes = recibir_mensaje(buffer_recepcion, sizeof(buffer_recepcion)-1);
-            if (bytes > 0) {
-                if (bytes < (int)sizeof(buffer_recepcion)) buffer_recepcion[bytes] = '\0';
-                else buffer_recepcion[sizeof(buffer_recepcion)-1] = '\0';
+    int bytes = recibir_mensaje(buffer_recepcion, sizeof(buffer_recepcion)-1);
+    if (bytes > 0) {
+        if (bytes < (int)sizeof(buffer_recepcion)) buffer_recepcion[bytes] = '\0';
+        else buffer_recepcion[sizeof(buffer_recepcion)-1] = '\0';
 
-                printf("[Socket] Recibido: %s\n", buffer_recepcion);
+        printf("[Socket] Recibido: %s\n", buffer_recepcion);
 
-                if (!EsParaMiSala(buffer_recepcion, targetRoomId, playerId, observerMode)) {
-                printf("[DEBUG] Mensaje ignorado (no es para sala %d): %s\n", targetRoomId, buffer_recepcion);
-                continue;
-            }
+        if (!EsParaMiSala(buffer_recepcion, targetRoomId, playerId, observerMode)) {
+            printf("[DEBUG] Mensaje ignorado (no es para sala %d): %s\n", targetRoomId, buffer_recepcion);
+            continue;
+        }
+        
+        printf("[DEBUG Sala %d] Mensaje recibido: %s\n", targetRoomId, buffer_recepcion);
 
                 // OK con PLAYER_ID
                 if (strncmp(buffer_recepcion, "OK|PLAYER_ID|", 13) == 0) {
@@ -316,33 +318,47 @@ int main(int argc, char** argv) {
 
                 // PLAYER_POS|<roomId>|<playerId>|<x>|<y>
                 if (strncmp(buffer_recepcion, "PLAYER_POS|", 11) == 0) {
-                    int roomId, pid;
-                    float px, py;
-                    if (sscanf(buffer_recepcion, "PLAYER_POS|%d|%d|%f|%f", 
-                               &roomId, &pid, &px, &py) == 4) {
-                        // Solo procesar si es nuestro jugador o si somos espectador
-                        // y estamos observando esta sala
-                        if (!observerMode) {
-                            // Jugador: actualizar posiciones remotas (solo si están en nuestra sala)
-                            UpsertRemotePlayer(pid, roomId, px, py, NULL);
-                        } else if (observerMode && targetRoomId == roomId) {
-                            // Espectador: solo actualizar si es de nuestra sala
-                            UpsertRemotePlayer(pid, roomId, px, py, NULL);
-                        }
-                    }
-                }
+    int roomId, pid;
+    float px, py;
+    if (sscanf(buffer_recepcion, "PLAYER_POS|%d|%d|%f|%f", 
+               &roomId, &pid, &px, &py) == 4) {
+        
+        // Solo procesar si es de nuestra sala
+        if (roomId == targetRoomId) {
+            UpsertRemotePlayer(pid, roomId, px, py, NULL);
+            
+            // Para espectadores: si no tenemos jugador para observar, usar el primero que se mueva
+            if (observerMode && watchedPlayerId <= 0) {
+                watchedPlayerId = pid;
+                printf("[Espectador] Auto-seleccionando Jugador %d (primer movimiento en Sala %d)\n", 
+                       watchedPlayerId, targetRoomId);
+            }
+        }
+    }
+}
 
                 // PLAYER_JOINED|<playerId>|<name>
                 if (strncmp(buffer_recepcion, "PLAYER_JOINED|", 14) == 0) {
-                    int pid;
-                    char namebuf[64];
-                    if (sscanf(buffer_recepcion, "PLAYER_JOINED|%d|%63[^\n]", &pid, namebuf) == 2) {
-                        if (pid != playerId || observerMode) {
-                            // Asignar sala por defecto (se actualizará con PLAYER_POS)
-                            UpsertRemotePlayer(pid, targetRoomId, 50.0f, 100.0f, namebuf);
-                        }
-                    }
-                }
+    int pid;
+    char namebuf[64];
+    if (sscanf(buffer_recepcion, "PLAYER_JOINED|%d|%63[^\n]", &pid, namebuf) == 2) {
+        if (observerMode) {
+    printf("[Espectador] Conectado a Sala %d\n", targetRoomId);
+    printf("[Espectador] Buscando jugadores en esta sala...\n");
+    
+    // Enviar mensaje para solicitar jugadores existentes
+    if (conectado && esta_conectado()) {
+        char queryMsg[50];
+        snprintf(queryMsg, sizeof(queryMsg), "QUERY|PLAYERS|%d", targetRoomId);
+        enviar_mensaje(queryMsg);
+    }
+    
+    // Auto-detectar jugador después de un tiempo
+    watchedPlayerId = targetRoomId; // Asumir que el jugador tiene mismo ID que sala
+    printf("[Espectador] Intentando observar Jugador ID %d (asumido)\n", watchedPlayerId);
+}
+    }
+}
 
                 // PLAYER_LEFT|<playerId>
                 if (strncmp(buffer_recepcion, "PLAYER_LEFT|", 12) == 0) {
@@ -353,14 +369,33 @@ int main(int argc, char** argv) {
                 }
 
                 // FRUIT_CREATED|<id>|<vine>|<height>|<points>
-                if (strncmp(buffer_recepcion, "FRUIT_CREATED|", 14) == 0) {
-                    int fid, vine, height, points;
-                    if (sscanf(buffer_recepcion, "FRUIT_CREATED|%d|%d|%d|%d",
-                            &fid, &vine, &height, &points) == 4) {
-                        CrearFruta(&gestorFrutas, fid, vine, (float)height, points);
-                        printf("[Servidor] FRUIT_CREATED id=%d vine=%d y=%d pts=%d\n", fid, vine, height, points);
-                    }
-                }
+               if (strncmp(buffer_recepcion, "FRUIT_CREATED|", 14) == 0) {
+    int fid, vine, height, points, roomId = targetRoomId; // Default a nuestra sala
+    
+    // Intentar con 5 parámetros (con roomId)
+    if (sscanf(buffer_recepcion, "FRUIT_CREATED|%d|%d|%d|%d|%d",
+            &fid, &vine, &height, &points, &roomId) == 5) {
+        // OK, tenemos roomId
+    } 
+    // Intentar con 4 parámetros (sin roomId - compatibilidad)
+    else if (sscanf(buffer_recepcion, "FRUIT_CREATED|%d|%d|%d|%d",
+            &fid, &vine, &height, &points) == 4) {
+        // Usar targetRoomId por defecto
+        roomId = targetRoomId;
+    } else {
+        printf("[ERROR] Formato FRUIT_CREATED inválido: %s\n", buffer_recepcion);
+        continue;
+    }
+    
+    // Solo crear si es para nuestra sala
+    if (roomId == targetRoomId) {
+        printf("[CLIENT Sala %d] Creando fruta id=%d vine=%d y=%d pts=%d\n", 
+               targetRoomId, fid, vine, height, points);
+        CrearFruta(&gestorFrutas, fid, vine, (float)height, points);
+    } else {
+        printf("[CLIENT Sala %d] Ignorando fruta para sala %d\n", targetRoomId, roomId);
+    }
+}
 
                 // FRUIT_DELETED|<id>|<playerId>|<points>
                 if (strncmp(buffer_recepcion, "FRUIT_DELETED|", 14) == 0) {
@@ -384,27 +419,55 @@ int main(int argc, char** argv) {
 
                 // CCA_CREATED (enemigos)
                 if (strncmp(buffer_recepcion, "CCA_CREATED", 11) == 0) {
-        int vine, height, points;
-        int nuevoID = gestorEnemigos.proximo_id;
-        if (sscanf(buffer_recepcion, "CCA_CREATED|%d|%d|%d",
-                &vine, &height, &points) == 3) {
-            printf("[CLIENT] Cocodrilo AZUL creado vine=%d (Sala: %d)\n", vine, targetRoomId);
-            CrearEnemigoEnLiana(&gestorEnemigos, nuevoID, COCODRILO_AZUL, vine);
-            gestorEnemigos.proximo_id++;
-        }
+    int vine, height, points, roomId = targetRoomId;
+    int nuevoID = gestorEnemigos.proximo_id;
+    
+    // Intentar con 4 parámetros (con roomId)
+    if (sscanf(buffer_recepcion, "CCA_CREATED|%d|%d|%d|%d",
+            &vine, &height, &points, &roomId) == 4) {
+        // OK
     }
+    // Intentar con 3 parámetros (sin roomId - compatibilidad)
+    else if (sscanf(buffer_recepcion, "CCA_CREATED|%d|%d|%d",
+            &vine, &height, &points) == 3) {
+        roomId = targetRoomId;
+    } else {
+        printf("[ERROR] Formato CCA_CREATED inválido: %s\n", buffer_recepcion);
+        continue;
+    }
+    
+    if (roomId == targetRoomId) {
+        printf("[CLIENT Sala %d] Cocodrilo AZUL creado vine=%d\n", targetRoomId, vine);
+        CrearEnemigoEnLiana(&gestorEnemigos, nuevoID, COCODRILO_AZUL, vine);
+        gestorEnemigos.proximo_id++;
+    }
+}
 
                 // CCR_CREATED (enemigos)
                 if (strncmp(buffer_recepcion, "CCR_CREATED", 11) == 0) {
-        int vine, height, points;
-        int nuevoID = gestorEnemigos.proximo_id;
-        if (sscanf(buffer_recepcion, "CCR_CREATED|%d|%d|%d",
-                &vine, &height, &points) == 3) {
-            printf("[CLIENT] Cocodrilo ROJO creado vine=%d (Sala: %d)\n", vine, targetRoomId);
-            CrearEnemigoEnLiana(&gestorEnemigos, nuevoID, COCODRILO_ROJO, vine);
-            gestorEnemigos.proximo_id++;
-                    }
-                }
+    int vine, height, points, roomId = targetRoomId;
+    int nuevoID = gestorEnemigos.proximo_id;
+    
+    // Intentar con 4 parámetros (con roomId)
+    if (sscanf(buffer_recepcion, "CCR_CREATED|%d|%d|%d|%d",
+            &vine, &height, &points, &roomId) == 4) {
+        // OK
+    }
+    // Intentar con 3 parámetros (sin roomId - compatibilidad)
+    else if (sscanf(buffer_recepcion, "CCR_CREATED|%d|%d|%d",
+            &vine, &height, &points) == 3) {
+        roomId = targetRoomId;
+    } else {
+        printf("[ERROR] Formato CCR_CREATED inválido: %s\n", buffer_recepcion);
+        continue;
+    }
+    
+    if (roomId == targetRoomId) {
+        printf("[CLIENT Sala %d] Cocodrilo ROJO creado vine=%d\n", targetRoomId, vine);
+        CrearEnemigoEnLiana(&gestorEnemigos, nuevoID, COCODRILO_ROJO, vine);
+        gestorEnemigos.proximo_id++;
+    }
+}
             }
         }
         

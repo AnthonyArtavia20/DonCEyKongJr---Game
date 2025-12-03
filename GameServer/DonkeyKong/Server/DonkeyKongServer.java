@@ -4,6 +4,8 @@ import GameServer.CoreGenericServer.*;
 import GameServer.DonkeyKong.Game.GameLogic;
 import java.io.IOException;
 import java.net.Socket;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
 import java.util.concurrent.ConcurrentHashMap;
@@ -56,6 +58,7 @@ public class DonkeyKongServer extends GameServer {
             
             if (gameLogic != null) {
                 gameLogic.createFruit(vine, height, points);
+                System.out.println("[DEBUG] Fruta creada en GameLogic: id=" + fid + ", vine=" + vine + ", height=" + height);
             }
             
             return fid;
@@ -75,8 +78,10 @@ public class DonkeyKongServer extends GameServer {
             if (gameLogic != null) {
                 if (type.equals("RED")) {
                     gameLogic.createRedCrocodile(vine, speed);
+                    System.out.println("[DEBUG] Cocodrilo ROJO creado en GameLogic: vine=" + vine);
                 } else if (type.equals("BLUE")) {
                     gameLogic.createBlueCrocodile(vine, speed);
+                    System.out.println("[DEBUG] Cocodrilo AZUL creado en GameLogic: vine=" + vine);
                 }
             }
         }
@@ -100,6 +105,32 @@ public class DonkeyKongServer extends GameServer {
         
         public int getFruitCount() {
             return fruitMap.size();
+        }
+        
+        // Obtener eventos pendientes de GameLogic
+        public List<String> getPendingGameLogicEvents() {
+            List<String> events = new ArrayList<>();
+            if (gameLogic != null) {
+                // Intentar obtener eventos de GameLogic si tiene el método
+                try {
+                    // Esta es una implementación genérica - ajusta según tu GameLogic real
+                    // Si GameLogic tiene eventos pendientes, los agregamos aquí
+                } catch (Exception e) {
+                    // Si GameLogic no tiene este método, no hacemos nada
+                }
+            }
+            return events;
+        }
+        
+        // Limpiar eventos de GameLogic
+        public void clearGameLogicEvents() {
+            if (gameLogic != null) {
+                try {
+                    // Limpiar eventos si el método existe
+                } catch (Exception e) {
+                    // Si no existe, no hacemos nada
+                }
+            }
         }
     }
 
@@ -149,6 +180,46 @@ public class DonkeyKongServer extends GameServer {
             if (room.gameLogic != null) {
                 room.gameLogic.update(delta);
                 
+                // Procesar eventos pendientes de GameLogic
+                List<String> gameEvents = room.getPendingGameLogicEvents();
+                for (String event : gameEvents) {
+                    System.out.println("[DEBUG] Evento de GameLogic: " + event);
+                    
+                    // Traducir eventos de GameLogic a nuestro protocolo
+                    if (event.startsWith("FRUIT_CREATED:")) {
+                        // Formato: FRUIT_CREATED:id:vine:height:points
+                        String[] parts = event.split(":");
+                        if (parts.length >= 5) {
+                            String msg = MessageProtocol.encode("FRUIT_CREATED",
+                                parts[1], parts[2], parts[3], parts[4],
+                                String.valueOf(room.roomId));
+                            broadcastToRoom(room.roomId, msg);
+                            System.out.println("[DEBUG] Traducido a: " + msg);
+                        }
+                    }
+                    else if (event.startsWith("ENEMY_SPAWNED:")) {
+                        // Formato: ENEMY_SPAWNED:id:type:vine
+                        String[] parts = event.split(":");
+                        if (parts.length >= 4) {
+                            String type = parts[2];
+                            if (type.equals("RED")) {
+                                String msg = MessageProtocol.encode("CCR_CREATED",
+                                    parts[3], "0", "0", String.valueOf(room.roomId));
+                                broadcastToRoom(room.roomId, msg);
+                                System.out.println("[DEBUG] Traducido a: " + msg);
+                            } else if (type.equals("BLUE")) {
+                                String msg = MessageProtocol.encode("CCA_CREATED",
+                                    parts[3], "0", "0", String.valueOf(room.roomId));
+                                broadcastToRoom(room.roomId, msg);
+                                System.out.println("[DEBUG] Traducido a: " + msg);
+                            }
+                        }
+                    }
+                }
+                
+                // Limpiar eventos procesados
+                room.clearGameLogicEvents();
+                
                 // Broadcast estado actualizado a todos en la sala
                 String gameState = room.gameLogic.serialize();
                 broadcastToRoom(room.roomId, gameState);
@@ -159,17 +230,28 @@ public class DonkeyKongServer extends GameServer {
     /**
      * Broadcast solo a clientes de una sala específica
      */
-public void broadcastToRoom(int roomId, String message) {
+    public void broadcastToRoom(int roomId, String message) {
     if (message == null || message.isEmpty()) return;
     
+    // Solo mostrar debug para comandos importantes
+    boolean showDebug = message.startsWith("FRUIT_") || 
+                       message.startsWith("CCA_") || 
+                       message.startsWith("CCR_") ||
+                       message.startsWith("PLAYER_") ||
+                       message.startsWith("SCORE_") ||
+                       message.startsWith("OK|") ||
+                       message.startsWith("ERROR");
     
-
+    if (showDebug) {
+        System.out.println("[NET] Sala " + roomId + " ← " + 
+            (message.length() > 60 ? message.substring(0, 60) + "..." : message));
+    }
+    
     for (ClientHandler client : clients) {
         if (client instanceof DKClientHandler) {
             DKClientHandler dkClient = (DKClientHandler) client;
             Integer clientRoom = dkClient.getGameRoomId();
             
-            // Enviar solo a los de esta sala (jugador + espectadores)
             if (clientRoom != null && clientRoom == roomId) {
                 sendTo(client, message);
             }
@@ -177,12 +259,12 @@ public void broadcastToRoom(int roomId, String message) {
     }
 }
 
-/**
- * Obtener sala por ID (hacer público)
- */
-public GameRoom getRoomById(int roomId) {  // Cambiado de private a public
-    return gameRooms.get(roomId);
-}
+    /**
+     * Obtener sala por ID
+     */
+    public GameRoom getRoomById(int roomId) {
+        return gameRooms.get(roomId);
+    }
     
     /**
      * Broadcast a todos los clientes (para compatibilidad CLI)
@@ -195,6 +277,20 @@ public GameRoom getRoomById(int roomId) {  // Cambiado de private a public
         for (ClientHandler client : clients) {
             sendTo(client, message);
         }
+    }
+    
+    // Método auxiliar para contar clientes en sala
+    private int countClientsInRoom(int roomId) {
+        int count = 0;
+        for (ClientHandler client : clients) {
+            if (client instanceof DKClientHandler) {
+                DKClientHandler dkClient = (DKClientHandler) client;
+                if (roomId == dkClient.getGameRoomId()) {
+                    count++;
+                }
+            }
+        }
+        return count;
     }
     
     @Override
@@ -484,15 +580,24 @@ public GameRoom getRoomById(int roomId) {  // Cambiado de private a public
                 // Crear fruta en la sala específica
                 int fid = room.createFruit(vine, height, points);
                 
-                // Broadcast solo a esa sala
+                // Enviar mensaje directo al cliente (formato que espera el cliente C)
                 String msgToSend = MessageProtocol.encode("FRUIT_CREATED",
-        String.valueOf(fid), String.valueOf(vine),
-        String.valueOf(height), String.valueOf(points));
-    
-    broadcastToRoom(targetRoomId, msgToSend);  // ← CAMBIADO: usar broadcastToRoom
-    sendTo(client, MessageProtocol.encode("OK", "FRUIT_CREATED", 
-        "id=" + fid, "room=" + targetRoomId));
-    break;
+                    String.valueOf(fid), 
+                    String.valueOf(vine),
+                    String.valueOf(height), 
+                    String.valueOf(points),
+                    String.valueOf(targetRoomId));
+                
+                System.out.println("[ADMIN DEBUG] Enviando mensaje: " + msgToSend);
+                System.out.println("[ADMIN DEBUG] Clientes en sala " + targetRoomId + ": " + countClientsInRoom(targetRoomId));
+                
+                broadcastToRoom(targetRoomId, msgToSend);
+                sendTo(client, MessageProtocol.encode("OK", "FRUIT_CREATED", 
+                    "id=" + fid, "room=" + targetRoomId));
+                
+                System.out.println("[ADMIN] Fruta creada: id=" + fid + 
+                    " sala=" + targetRoomId + " liana=" + vine + " altura=" + height + " puntos=" + points);
+                break;
             }
                 
             case "CREATE_CCA": {
@@ -513,9 +618,14 @@ public GameRoom getRoomById(int roomId) {  // Cambiado de private a public
                 
                 room.createEnemy("BLUE", vine, 0);
                 
+                // Enviar mensaje directo al cliente
                 String msgToSend = MessageProtocol.encode("CCA_CREATED",
-                    String.valueOf(vine), "0", "0");
+                    String.valueOf(vine), 
+                    "0", 
+                    "0",
+                    String.valueOf(targetRoomId));
                 
+                System.out.println("[ADMIN DEBUG] Enviando mensaje: " + msgToSend);
                 broadcastToRoom(targetRoomId, msgToSend);
                 sendTo(client, MessageProtocol.encode("OK", "CCA_CREATED"));
                 
@@ -541,9 +651,14 @@ public GameRoom getRoomById(int roomId) {  // Cambiado de private a public
                 
                 room.createEnemy("RED", vine, 0);
                 
+                // Enviar mensaje directo al cliente
                 String msgToSend = MessageProtocol.encode("CCR_CREATED",
-                    String.valueOf(vine), "0", "0");
+                    String.valueOf(vine), 
+                    "0", 
+                    "0",
+                    String.valueOf(targetRoomId));
                 
+                System.out.println("[ADMIN DEBUG] Enviando mensaje: " + msgToSend);
                 broadcastToRoom(targetRoomId, msgToSend);
                 sendTo(client, MessageProtocol.encode("OK", "CCR_CREATED"));
                 
@@ -645,6 +760,7 @@ public GameRoom getRoomById(int roomId) {  // Cambiado de private a public
         stats.append("Jugadores activos: ").append(playerCount).append("\n");
         stats.append("Espectadores activos: ").append(spectatorCount).append("\n");
         stats.append("Salas activas: ").append(gameRooms.size()).append("\n");
+        stats.append("Clientes totales conectados: ").append(clients.size()).append("\n");
         stats.append("================================");
         return stats.toString();
     }
@@ -680,366 +796,384 @@ public GameRoom getRoomById(int roomId) {  // Cambiado de private a public
         
         // CLI simple
         try (Scanner scanner = new Scanner(System.in)) {
-    System.out.println("\nComandos disponibles:");
-    System.out.println("  stats  - Mostrar estadísticas del servidor");
-    System.out.println("  rooms  - Mostrar salas activas");
-    System.out.println("  cf     - Crear Fruta en sala específica");
-    System.out.println("  cca    - Crear Cocodrilo Azul en sala específica");
-    System.out.println("  ccr    - Crear Cocodrilo Rojo en sala específica");
-    System.out.println("  df     - Delete Fruit (interactive)");
-    System.out.println("  deletef <id> - Delete Fruit by id inline");
-    System.out.println("  level <room> <nivel> - Cambiar nivel de una sala");
-    System.out.println("  quit   - Detener servidor");
-    System.out.println();
-    
-    while (scanner.hasNextLine()) {
-        String line = scanner.nextLine().trim();
-        String lower = line.toLowerCase();
-        
-        if (lower.equals("quit") || lower.equals("exit") || lower.equals("stop")) {
-            break;
+            System.out.println("\nComandos disponibles:");
+            System.out.println("  stats  - Mostrar estadísticas del servidor");
+            System.out.println("  rooms  - Mostrar salas activas");
+            System.out.println("  cf     - Crear Fruta en sala específica");
+            System.out.println("  cca    - Crear Cocodrilo Azul en sala específica");
+            System.out.println("  ccr    - Crear Cocodrilo Rojo en sala específica");
+            System.out.println("  df     - Delete Fruit (interactive)");
+            System.out.println("  deletef <id> - Delete Fruit by id inline");
+            System.out.println("  level <room> <nivel> - Cambiar nivel de una sala");
+            System.out.println("  debug  - Mostrar debug info");
+            System.out.println("  quit   - Detener servidor");
+            System.out.println();
             
-        } else if (lower.equals("stats")) {
-            System.out.println("\n" + server.getStats() + "\n");
-            
-        } else if (lower.equals("rooms")) {
-            System.out.println("\n╔═════════════════════════════════════════════════════════════╗");
-            System.out.println("║                     SALAS ACTIVAS                           ║");
-            System.out.println("╠═════╦═══════════╦═══════╦═════════╦═══════════╦═════════════╣");
-            System.out.println("║ Sala║ Jugador   ║ Nivel ║ Enemigos║ Frutas    ║ Espectadores║");
-            System.out.println("╠═════╬═══════════╬═══════╬═════════╬═══════════╬═════════════╣");
-            
-            for (Map.Entry<Integer, GameRoom> entry : server.gameRooms.entrySet()) {
-                GameRoom room = entry.getValue();
-                int level = room.getCurrentLevel();
-                int enemies = room.getEnemyCount();
-                int fruits = room.getFruitCount();
-                int spectators = room.spectatorCount;
+            while (scanner.hasNextLine()) {
+                String line = scanner.nextLine().trim();
+                String lower = line.toLowerCase();
                 
-                System.out.printf("║  %-2d ║ %-9s ║  %-4d ║  %-6d ║  %-8d ║  %-10d ║\n",
-                    room.roomId, room.playerName, level, enemies, fruits, spectators);
-            }
-            System.out.println("╚═════╩═══════════╩═══════╩═════════╩═══════════╩═════════════╝\n");
-            
-        } else if (lower.startsWith("level ")) {
-            // Formato: level <room> <nivel>
-            String[] parts = line.split("\\s+");
-            if (parts.length >= 3) {
-                try {
-                    int roomId = Integer.parseInt(parts[1]);
-                    int newLevel = Integer.parseInt(parts[2]);
+                if (lower.equals("quit") || lower.equals("exit") || lower.equals("stop")) {
+                    break;
                     
-                    if (newLevel < 1 || newLevel > 3) {
-                        System.out.println("[SERVER] ERROR: Nivel debe estar entre 1 y 3");
-                        continue;
+                } else if (lower.equals("stats")) {
+                    System.out.println("\n" + server.getStats() + "\n");
+                    
+                } else if (lower.equals("debug")) {
+                    System.out.println("\n=== DEBUG INFO ===");
+                    System.out.println("Total clientes: " + server.clients.size());
+                    for (int i = 0; i < server.clients.size(); i++) {
+                        ClientHandler client = server.clients.get(i);
+                        if (client instanceof DKClientHandler) {
+                            DKClientHandler dkClient = (DKClientHandler) client;
+                            System.out.println("Cliente " + i + ": " + 
+                                dkClient.getClientType() + " " + dkClient.getPlayerName() + 
+                                " (Sala: " + dkClient.getGameRoomId() + ")");
+                        }
                     }
+                    System.out.println("==================\n");
                     
-                    GameRoom room = server.getRoomById(roomId);
-                    if (room == null) {
-                        System.out.println("[SERVER] ERROR: Sala " + roomId + " no existe");
-                        continue;
-                    }
+                } else if (lower.equals("rooms")) {
+                    System.out.println("\n╔═════════════════════════════════════════════════════════════╗");
+                    System.out.println("║                     SALAS ACTIVAS                           ║");
+                    System.out.println("╠═════╦═══════════╦═══════╦═════════╦═══════════╦═════════════╣");
+                    System.out.println("║ Sala║ Jugador   ║ Nivel ║ Enemigos║ Frutas    ║ Espectadores║");
+                    System.out.println("╠═════╬═══════════╬═══════╬═════════╬═══════════╬═════════════╣");
                     
-                    if (room.gameLogic != null) {
-                        room.gameLogic.changeLevel(newLevel);
-                        System.out.println("[SERVER] ✓ Sala " + roomId + " cambiada a nivel " + newLevel);
-                    }
-                    
-                } catch (NumberFormatException e) {
-                    System.out.println("[SERVER] ERROR: Formato: level <sala> <nivel>");
-                }
-            } else {
-                System.out.println("[SERVER] Uso: level <sala> <nivel>");
-            }
-            
-        } else if (lower.equals("cf")) {
-            System.out.print("Ingrese número de sala (1-" + server.gameRooms.size() + "): ");
-            String roomStr = scanner.nextLine().trim();
-            
-            int roomId;
-            try {
-                roomId = Integer.parseInt(roomStr);
-                GameRoom room = server.getRoomById(roomId);
-                if (room == null) {
-                    System.out.println("[SERVER] ERROR: Sala " + roomId + " no existe");
-                    continue;
-                }
-            } catch (NumberFormatException e) {
-                System.out.println("[SERVER] ERROR: Número de sala inválido");
-                continue;
-            }
-            
-            System.out.print("Ingrese la liana para la fruta (1-9): ");
-            String inputVine = scanner.nextLine().trim();
-
-            int vine;
-            try {
-                vine = Integer.parseInt(inputVine);
-                if (vine < 1 || vine > 9) {
-                    System.out.println("[SERVER] ERROR: Liana debe estar entre 1 y 9");
-                    continue;
-                }
-            } catch (NumberFormatException e) {
-                System.out.println("[SERVER] ERROR: Debe ingresar un número válido");
-                continue;
-            }
-
-            System.out.print("Ingrese altura en la liana (100-700): ");
-            String inputHeight = scanner.nextLine().trim();
-            
-            int height;
-            try {
-                height = Integer.parseInt(inputHeight);
-                if (height < 100 || height > 700) {
-                    System.out.println("[SERVER] ERROR: Altura debe estar entre 100 y 700");
-                    continue;
-                }
-            } catch (NumberFormatException e) {
-                System.out.println("[SERVER] ERROR: Altura inválida");
-                continue;
-            }
-
-            System.out.print("Ingrese puntos de la fruta (50-500): ");
-            String inputPoints = scanner.nextLine().trim();
-            
-            int points = 100;
-            try {
-                points = Integer.parseInt(inputPoints);
-                if (points < 50 || points > 500) {
-                    System.out.println("[SERVER] Usando puntos por defecto: 100");
-                    points = 100;
-                }
-            } catch (NumberFormatException e) {
-                System.out.println("[SERVER] Usando puntos por defecto: 100");
-            }
-
-            // Crear fruta en la sala específica
-            GameRoom room = server.getRoomById(roomId);
-            if (room != null) {
-                int fid = room.createFruit(vine, height, points);
-                
-                // Broadcast solo a esa sala
-                String msg = MessageProtocol.encode("FRUIT_CREATED",
-                    String.valueOf(fid),
-                    String.valueOf(vine),
-                    String.valueOf(height),
-                    String.valueOf(points));
-                
-                server.broadcastToRoom(roomId, msg);
-                
-                System.out.println("[SERVER] ✓ Fruta creada (id=" + fid + ") en Sala " + roomId + 
-                    ", liana " + vine + ", altura " + height + ", puntos " + points);
-            }
-            
-        } else if (lower.equals("cca")) {
-            System.out.print("Ingrese número de sala (1-" + server.gameRooms.size() + "): ");
-            String roomStr = scanner.nextLine().trim();
-            
-            int roomId;
-            try {
-                roomId = Integer.parseInt(roomStr);
-                GameRoom room = server.getRoomById(roomId);
-                if (room == null) {
-                    System.out.println("[SERVER] ERROR: Sala " + roomId + " no existe");
-                    continue;
-                }
-            } catch (NumberFormatException e) {
-                System.out.println("[SERVER] ERROR: Número de sala inválido");
-                continue;
-            }
-            
-            System.out.print("Ingrese la liana para el cocodrilo azul (1-9): ");
-            String inputVine = scanner.nextLine().trim();
-
-            int vine;
-            try {
-                vine = Integer.parseInt(inputVine);
-                if (vine < 1 || vine > 9) {
-                    System.out.println("[SERVER] ERROR: Liana debe estar entre 1 y 9");
-                    continue;
-                }
-            } catch (NumberFormatException e) {
-                System.out.println("[SERVER] ERROR: Debe ingresar un número válido");
-                continue;
-            }
-
-            System.out.print("Ingrese velocidad (0.5-3.0, 0 para predeterminado): ");
-            String inputSpeed = scanner.nextLine().trim();
-            
-            float speed = 0; // 0 significa usar velocidad por defecto según nivel
-            try {
-                speed = Float.parseFloat(inputSpeed);
-                if (speed < 0) speed = 0;
-            } catch (NumberFormatException e) {
-                speed = 0;
-            }
-
-            // Crear enemigo en la sala específica
-            GameRoom room = server.getRoomById(roomId);
-            if (room != null) {
-                room.createEnemy("BLUE", vine, speed);
-                
-                String msg = MessageProtocol.encode("CCA_CREATED",
-                    String.valueOf(vine),
-                    "0",
-                    "0");
-                
-                server.broadcastToRoom(roomId, msg);
-                
-                System.out.println("[SERVER] ✓ Cocodrilo AZUL creado en Sala " + roomId + 
-                    ", liana " + vine + (speed > 0 ? ", velocidad " + speed : ""));
-            }
-            
-        } else if (lower.equals("ccr")) {
-            System.out.print("Ingrese número de sala (1-" + server.gameRooms.size() + "): ");
-            String roomStr = scanner.nextLine().trim();
-            
-            int roomId;
-            try {
-                roomId = Integer.parseInt(roomStr);
-                GameRoom room = server.getRoomById(roomId);
-                if (room == null) {
-                    System.out.println("[SERVER] ERROR: Sala " + roomId + " no existe");
-                    continue;
-                }
-            } catch (NumberFormatException e) {
-                System.out.println("[SERVER] ERROR: Número de sala inválido");
-                continue;
-            }
-            
-            System.out.print("Ingrese la liana para el cocodrilo rojo (1-9): ");
-            String inputVine = scanner.nextLine().trim();
-
-            int vine;
-            try {
-                vine = Integer.parseInt(inputVine);
-                if (vine < 1 || vine > 9) {
-                    System.out.println("[SERVER] ERROR: Liana debe estar entre 1 y 9");
-                    continue;
-                }
-            } catch (NumberFormatException e) {
-                System.out.println("[SERVER] ERROR: Debe ingresar un número válido");
-                continue;
-            }
-
-            System.out.print("Ingrese velocidad (0.5-3.0, 0 para predeterminado): ");
-            String inputSpeed = scanner.nextLine().trim();
-            
-            float speed = 0; // 0 significa usar velocidad por defecto según nivel
-            try {
-                speed = Float.parseFloat(inputSpeed);
-                if (speed < 0) speed = 0;
-            } catch (NumberFormatException e) {
-                speed = 0;
-            }
-
-            // Crear enemigo en la sala específica
-            GameRoom room = server.getRoomById(roomId);
-            if (room != null) {
-                room.createEnemy("RED", vine, speed);
-                
-                String msg = MessageProtocol.encode("CCR_CREATED",
-                    String.valueOf(vine),
-                    "0",
-                    "0");
-                
-                server.broadcastToRoom(roomId, msg);
-                
-                System.out.println("[SERVER] ✓ Cocodrilo ROJO creado en Sala " + roomId + 
-                    ", liana " + vine + (speed > 0 ? ", velocidad " + speed : ""));
-            }
-            
-        } else if (lower.equals("df")) {
-            System.out.print("Ingrese número de sala (1-" + server.gameRooms.size() + "): ");
-            String roomStr = scanner.nextLine().trim();
-            
-            int roomId;
-            try {
-                roomId = Integer.parseInt(roomStr);
-                GameRoom room = server.getRoomById(roomId);
-                if (room == null) {
-                    System.out.println("[SERVER] ERROR: Sala " + roomId + " no existe");
-                    continue;
-                }
-            } catch (NumberFormatException e) {
-                System.out.println("[SERVER] ERROR: Número de sala inválido");
-                continue;
-            }
-            
-            // Interactive delete by id
-            System.out.print("Ingrese ID de fruta a eliminar: ");
-            String idStr = scanner.nextLine().trim();
-            try {
-                int fid = Integer.parseInt(idStr);
-                GameRoom room = server.getRoomById(roomId);
-                if (room != null) {
-                    int[] info = room.fruitMap.remove(fid);
-                    if (info != null) {
-                        int vine = info[0];
-                        int height = info[1];
-                        int points = info[2];
-                        boolean deleted = room.deleteFruit(fid);
+                    for (Map.Entry<Integer, GameRoom> entry : server.gameRooms.entrySet()) {
+                        GameRoom room = entry.getValue();
+                        int level = room.getCurrentLevel();
+                        int enemies = room.getEnemyCount();
+                        int fruits = room.getFruitCount();
+                        int spectators = room.spectatorCount;
                         
-                        if (deleted) {
-                            String msg = MessageProtocol.encode("FRUIT_DELETED", 
-                                String.valueOf(fid), "0", String.valueOf(points));
-                            server.broadcastToRoom(roomId, msg);
-                            System.out.println("[SERVER] ✓ Fruta id=" + fid + " eliminada de Sala " + roomId);
-                        } else {
-                            System.out.println("[SERVER] ERROR: No se pudo eliminar fruta en GameLogic.");
+                        System.out.printf("║  %-2d ║ %-9s ║  %-4d ║  %-6d ║  %-8d ║  %-10d ║\n",
+                            room.roomId, room.playerName, level, enemies, fruits, spectators);
+                    }
+                    System.out.println("╚═════╩═══════════╩═══════╩═════════╩═══════════╩═════════════╝\n");
+                    
+                } else if (lower.startsWith("level ")) {
+                    // Formato: level <room> <nivel>
+                    String[] parts = line.split("\\s+");
+                    if (parts.length >= 3) {
+                        try {
+                            int roomId = Integer.parseInt(parts[1]);
+                            int newLevel = Integer.parseInt(parts[2]);
+                            
+                            if (newLevel < 1 || newLevel > 3) {
+                                System.out.println("[SERVER] ERROR: Nivel debe estar entre 1 y 3");
+                                continue;
+                            }
+                            
+                            GameRoom room = server.getRoomById(roomId);
+                            if (room == null) {
+                                System.out.println("[SERVER] ERROR: Sala " + roomId + " no existe");
+                                continue;
+                            }
+                            
+                            if (room.gameLogic != null) {
+                                room.gameLogic.changeLevel(newLevel);
+                                System.out.println("[SERVER] ✓ Sala " + roomId + " cambiada a nivel " + newLevel);
+                            }
+                            
+                        } catch (NumberFormatException e) {
+                            System.out.println("[SERVER] ERROR: Formato: level <sala> <nivel>");
                         }
                     } else {
-                        System.out.println("[SERVER] ERROR: No existe fruta con id=" + fid + " en Sala " + roomId);
+                        System.out.println("[SERVER] Uso: level <sala> <nivel>");
                     }
-                }
-            } catch (NumberFormatException e) {
-                System.out.println("[SERVER] ERROR: ID inválido");
-            }
-            
-        } else if (lower.startsWith("deletef ")) {
-            String[] parts = line.split("\\s+");
-            if (parts.length >= 3) {
-                try {
-                    int roomId = Integer.parseInt(parts[1]);
-                    int fid = Integer.parseInt(parts[2]);
                     
-                    GameRoom room = server.getRoomById(roomId);
-                    if (room == null) {
-                        System.out.println("[SERVER] ERROR: Sala " + roomId + " no existe");
+                } else if (lower.equals("cf")) {
+                    System.out.print("Ingrese número de sala (1-" + server.gameRooms.size() + "): ");
+                    String roomStr = scanner.nextLine().trim();
+                    
+                    int roomId;
+                    try {
+                        roomId = Integer.parseInt(roomStr);
+                        GameRoom room = server.getRoomById(roomId);
+                        if (room == null) {
+                            System.out.println("[SERVER] ERROR: Sala " + roomId + " no existe");
+                            continue;
+                        }
+                    } catch (NumberFormatException e) {
+                        System.out.println("[SERVER] ERROR: Número de sala inválido");
                         continue;
                     }
                     
-                    int[] info = room.fruitMap.remove(fid);
-                    if (info != null) {
-                        int vine = info[0];
-                        int height = info[1];
-                        int points = info[2];
-                        boolean deleted = room.deleteFruit(fid);
+                    System.out.print("Ingrese la liana para la fruta (1-9): ");
+                    String inputVine = scanner.nextLine().trim();
+
+                    int vine;
+                    try {
+                        vine = Integer.parseInt(inputVine);
+                        if (vine < 1 || vine > 9) {
+                            System.out.println("[SERVER] ERROR: Liana debe estar entre 1 y 9");
+                            continue;
+                        }
+                    } catch (NumberFormatException e) {
+                        System.out.println("[SERVER] ERROR: Debe ingresar un número válido");
+                        continue;
+                    }
+
+                    System.out.print("Ingrese altura en la liana (100-700): ");
+                    String inputHeight = scanner.nextLine().trim();
+                    
+                    int height;
+                    try {
+                        height = Integer.parseInt(inputHeight);
+                        if (height < 100 || height > 700) {
+                            System.out.println("[SERVER] ERROR: Altura debe estar entre 100 y 700");
+                            continue;
+                        }
+                    } catch (NumberFormatException e) {
+                        System.out.println("[SERVER] ERROR: Altura inválida");
+                        continue;
+                    }
+
+                    System.out.print("Ingrese puntos de la fruta (50-500): ");
+                    String inputPoints = scanner.nextLine().trim();
+                    
+                    int points = 100;
+                    try {
+                        points = Integer.parseInt(inputPoints);
+                        if (points < 50 || points > 500) {
+                            System.out.println("[SERVER] Usando puntos por defecto: 100");
+                            points = 100;
+                        }
+                    } catch (NumberFormatException e) {
+                        System.out.println("[SERVER] Usando puntos por defecto: 100");
+                    }
+
+                    // Crear fruta en la sala específica
+                    GameRoom room = server.getRoomById(roomId);
+                    if (room != null) {
+                        int fid = room.createFruit(vine, height, points);
                         
-                        if (deleted) {
-                            String msg = MessageProtocol.encode("FRUIT_DELETED", 
-                                String.valueOf(fid), "0", String.valueOf(points));
-                            server.broadcastToRoom(roomId, msg);
-                            System.out.println("[SERVER] ✓ Fruta id=" + fid + " eliminada de Sala " + roomId);
-                        } else {
-                            System.out.println("[SERVER] ERROR: No se pudo eliminar fruta en GameLogic.");
+                        // Broadcast solo a esa sala
+                        String msg = MessageProtocol.encode("FRUIT_CREATED",
+                            String.valueOf(fid),
+                            String.valueOf(vine),
+                            String.valueOf(height),
+                            String.valueOf(points),
+                            String.valueOf(roomId));
+                        
+                        server.broadcastToRoom(roomId, msg);
+                        
+                        System.out.println("[SERVER] ✓ Fruta creada (id=" + fid + ") en Sala " + roomId + 
+                            ", liana " + vine + ", altura " + height + ", puntos " + points);
+                    }
+                    
+                } else if (lower.equals("cca")) {
+                    System.out.print("Ingrese número de sala (1-" + server.gameRooms.size() + "): ");
+                    String roomStr = scanner.nextLine().trim();
+                    
+                    int roomId;
+                    try {
+                        roomId = Integer.parseInt(roomStr);
+                        GameRoom room = server.getRoomById(roomId);
+                        if (room == null) {
+                            System.out.println("[SERVER] ERROR: Sala " + roomId + " no existe");
+                            continue;
+                        }
+                    } catch (NumberFormatException e) {
+                        System.out.println("[SERVER] ERROR: Número de sala inválido");
+                        continue;
+                    }
+                    
+                    System.out.print("Ingrese la liana para el cocodrilo azul (1-9): ");
+                    String inputVine = scanner.nextLine().trim();
+
+                    int vine;
+                    try {
+                        vine = Integer.parseInt(inputVine);
+                        if (vine < 1 || vine > 9) {
+                            System.out.println("[SERVER] ERROR: Liana debe estar entre 1 y 9");
+                            continue;
+                        }
+                    } catch (NumberFormatException e) {
+                        System.out.println("[SERVER] ERROR: Debe ingresar un número válido");
+                        continue;
+                    }
+
+                    System.out.print("Ingrese velocidad (0.5-3.0, 0 para predeterminado): ");
+                    String inputSpeed = scanner.nextLine().trim();
+                    
+                    float speed = 0; // 0 significa usar velocidad por defecto según nivel
+                    try {
+                        speed = Float.parseFloat(inputSpeed);
+                        if (speed < 0) speed = 0;
+                    } catch (NumberFormatException e) {
+                        speed = 0;
+                    }
+
+                    // Crear enemigo en la sala específica
+                    GameRoom room = server.getRoomById(roomId);
+                    if (room != null) {
+                        room.createEnemy("BLUE", vine, speed);
+                        
+                        String msg = MessageProtocol.encode("CCA_CREATED",
+                            String.valueOf(vine),
+                            "0",
+                            "0",
+                            String.valueOf(roomId));
+                        
+                        server.broadcastToRoom(roomId, msg);
+                        
+                        System.out.println("[SERVER] ✓ Cocodrilo AZUL creado en Sala " + roomId + 
+                            ", liana " + vine + (speed > 0 ? ", velocidad " + speed : ""));
+                    }
+                    
+                } else if (lower.equals("ccr")) {
+                    System.out.print("Ingrese número de sala (1-" + server.gameRooms.size() + "): ");
+                    String roomStr = scanner.nextLine().trim();
+                    
+                    int roomId;
+                    try {
+                        roomId = Integer.parseInt(roomStr);
+                        GameRoom room = server.getRoomById(roomId);
+                        if (room == null) {
+                            System.out.println("[SERVER] ERROR: Sala " + roomId + " no existe");
+                            continue;
+                        }
+                    } catch (NumberFormatException e) {
+                        System.out.println("[SERVER] ERROR: Número de sala inválido");
+                        continue;
+                    }
+                    
+                    System.out.print("Ingrese la liana para el cocodrilo rojo (1-9): ");
+                    String inputVine = scanner.nextLine().trim();
+
+                    int vine;
+                    try {
+                        vine = Integer.parseInt(inputVine);
+                        if (vine < 1 || vine > 9) {
+                            System.out.println("[SERVER] ERROR: Liana debe estar entre 1 y 9");
+                            continue;
+                        }
+                    } catch (NumberFormatException e) {
+                        System.out.println("[SERVER] ERROR: Debe ingresar un número válido");
+                        continue;
+                    }
+
+                    System.out.print("Ingrese velocidad (0.5-3.0, 0 para predeterminado): ");
+                    String inputSpeed = scanner.nextLine().trim();
+                    
+                    float speed = 0; // 0 significa usar velocidad por defecto según nivel
+                    try {
+                        speed = Float.parseFloat(inputSpeed);
+                        if (speed < 0) speed = 0;
+                    } catch (NumberFormatException e) {
+                        speed = 0;
+                    }
+
+                    // Crear enemigo en la sala específica
+                    GameRoom room = server.getRoomById(roomId);
+                    if (room != null) {
+                        room.createEnemy("RED", vine, speed);
+                        
+                        String msg = MessageProtocol.encode("CCR_CREATED",
+                            String.valueOf(vine),
+                            "0",
+                            "0",
+                            String.valueOf(roomId));
+                        
+                        server.broadcastToRoom(roomId, msg);
+                        
+                        System.out.println("[SERVER] ✓ Cocodrilo ROJO creado en Sala " + roomId + 
+                            ", liana " + vine + (speed > 0 ? ", velocidad " + speed : ""));
+                    }
+                    
+                } else if (lower.equals("df")) {
+                    System.out.print("Ingrese número de sala (1-" + server.gameRooms.size() + "): ");
+                    String roomStr = scanner.nextLine().trim();
+                    
+                    int roomId;
+                    try {
+                        roomId = Integer.parseInt(roomStr);
+                        GameRoom room = server.getRoomById(roomId);
+                        if (room == null) {
+                            System.out.println("[SERVER] ERROR: Sala " + roomId + " no existe");
+                            continue;
+                        }
+                    } catch (NumberFormatException e) {
+                        System.out.println("[SERVER] ERROR: Número de sala inválido");
+                        continue;
+                    }
+                    
+                    // Interactive delete by id
+                    System.out.print("Ingrese ID de fruta a eliminar: ");
+                    String idStr = scanner.nextLine().trim();
+                    try {
+                        int fid = Integer.parseInt(idStr);
+                        GameRoom room = server.getRoomById(roomId);
+                        if (room != null) {
+                            int[] info = room.fruitMap.remove(fid);
+                            if (info != null) {
+                                int vine = info[0];
+                                int height = info[1];
+                                int points = info[2];
+                                boolean deleted = room.deleteFruit(fid);
+                                
+                                if (deleted) {
+                                    String msg = MessageProtocol.encode("FRUIT_DELETED", 
+                                        String.valueOf(fid), "0", String.valueOf(points));
+                                    server.broadcastToRoom(roomId, msg);
+                                    System.out.println("[SERVER] ✓ Fruta id=" + fid + " eliminada de Sala " + roomId);
+                                } else {
+                                    System.out.println("[SERVER] ERROR: No se pudo eliminar fruta en GameLogic.");
+                                }
+                            } else {
+                                System.out.println("[SERVER] ERROR: No existe fruta con id=" + fid + " en Sala " + roomId);
+                            }
+                        }
+                    } catch (NumberFormatException e) {
+                        System.out.println("[SERVER] ERROR: ID inválido");
+                    }
+                    
+                } else if (lower.startsWith("deletef ")) {
+                    String[] parts = line.split("\\s+");
+                    if (parts.length >= 3) {
+                        try {
+                            int roomId = Integer.parseInt(parts[1]);
+                            int fid = Integer.parseInt(parts[2]);
+                            
+                            GameRoom room = server.getRoomById(roomId);
+                            if (room == null) {
+                                System.out.println("[SERVER] ERROR: Sala " + roomId + " no existe");
+                                continue;
+                            }
+                            
+                            int[] info = room.fruitMap.remove(fid);
+                            if (info != null) {
+                                int vine = info[0];
+                                int height = info[1];
+                                int points = info[2];
+                                boolean deleted = room.deleteFruit(fid);
+                                
+                                if (deleted) {
+                                    String msg = MessageProtocol.encode("FRUIT_DELETED", 
+                                        String.valueOf(fid), "0", String.valueOf(points));
+                                    server.broadcastToRoom(roomId, msg);
+                                    System.out.println("[SERVER] ✓ Fruta id=" + fid + " eliminada de Sala " + roomId);
+                                } else {
+                                    System.out.println("[SERVER] ERROR: No se pudo eliminar fruta en GameLogic.");
+                                }
+                            } else {
+                                System.out.println("[SERVER] ERROR: No existe fruta con id=" + fid + " en Sala " + roomId);
+                            }
+                        } catch (NumberFormatException e) {
+                            System.out.println("[SERVER] ERROR: Formato: deletef <sala> <id>");
                         }
                     } else {
-                        System.out.println("[SERVER] ERROR: No existe fruta con id=" + fid + " en Sala " + roomId);
+                        System.out.println("[SERVER] Uso: deletef <sala> <id>");
                     }
-                } catch (NumberFormatException e) {
-                    System.out.println("[SERVER] ERROR: Formato: deletef <sala> <id>");
+                    
+                } else {
+                    System.out.println("[SERVER] Comando desconocido: " + line);
+                    System.out.println("Comandos disponibles: stats, rooms, cf, cca, ccr, df, deletef <sala> <id>, level <sala> <nivel>, debug, quit");
                 }
-            } else {
-                System.out.println("[SERVER] Uso: deletef <sala> <id>");
             }
-            
-        } else {
-            System.out.println("[SERVER] Comando desconocido: " + line);
-            System.out.println("Comandos disponibles: stats, rooms, cf, cca, ccr, df, deletef <sala> <id>, level <sala> <nivel>, quit");
         }
-    }
-}
         
         System.out.println("\n[SERVER] Deteniendo servidor...");
         server.stop();
