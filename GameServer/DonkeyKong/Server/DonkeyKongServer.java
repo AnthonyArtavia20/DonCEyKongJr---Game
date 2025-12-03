@@ -1,4 +1,3 @@
-// Modificado: agregado comandos CLI para eliminar fruta por id (interactive 'df' y inline 'deletef <id>')
 package GameServer.DonkeyKong.Server;
 
 import GameServer.CoreGenericServer.*;
@@ -11,36 +10,112 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/**
- * Servidor específico para DonCEy Kong Jr
- * Extiende el GameServer genérico
- * 
- * @author Anthony Artavia
- */
 public class DonkeyKongServer extends GameServer {
     
-    private GameLogic gameLogic;
-    private int playerCount = 0;
-    private int spectatorCount = 0;
-    private final ConcurrentLinkedQueue<MessageProtocol.Message> gameEvents = new ConcurrentLinkedQueue<>();
-    
-    // Gestión de frutas con IDs
+    private final ConcurrentHashMap<Integer, GameRoom> gameRooms = new ConcurrentHashMap<>();
+    private final AtomicInteger nextRoomId = new AtomicInteger(1);
     private final AtomicInteger nextFruitId = new AtomicInteger(1);
-    // map: fruitId -> int[]{vine, height, points}
-    private final ConcurrentHashMap<Integer, int[]> fruitMap = new ConcurrentHashMap<>();
-
+    private int spectatorCount = 0;
+    private int playerCount = 0; // Añadido: Contador de jugadores
     
+    // Añadir estas variables para compatibilidad con el CLI
+    private GameLogic globalGameLogic = null; // Solo para referencia en CLI
+    private ConcurrentHashMap<Integer, int[]> fruitMap = new ConcurrentHashMap<>(); // Solo para CLI
+
+    // Clase interna para representar una sala de juego
+    private static class GameRoom {
+        final int roomId;
+        final int playerId;
+        final GameLogic gameLogic;
+        final ConcurrentHashMap<Integer, int[]> fruitMap;
+        final ConcurrentLinkedQueue<MessageProtocol.Message> gameEvents;
+        final AtomicInteger roomFruitId;
+        String playerName;
+        int spectatorCount;
+        
+        GameRoom(int roomId, int playerId, String playerName) {
+            this.roomId = roomId;
+            this.playerId = playerId;
+            this.playerName = playerName;
+            this.gameLogic = new GameLogic();
+            this.fruitMap = new ConcurrentHashMap<>();
+            this.gameEvents = new ConcurrentLinkedQueue<>();
+            this.roomFruitId = new AtomicInteger(1);
+            this.spectatorCount = 0;
+            
+            // Inicializar GameLogic con nivel 1
+            if (this.gameLogic != null) {
+                this.gameLogic.changeLevel(1);
+            }
+        }
+        
+        // Crear fruta en esta sala específica
+        public int createFruit(int vine, int height, int points) {
+            int fid = roomFruitId.getAndIncrement();
+            fruitMap.put(fid, new int[]{vine, height, points});
+            
+            if (gameLogic != null) {
+                gameLogic.createFruit(vine, height, points);
+            }
+            
+            return fid;
+        }
+        
+        // Eliminar fruta de esta sala
+        public boolean deleteFruit(int fruitId) {
+            int[] info = fruitMap.remove(fruitId);
+            if (info != null && gameLogic != null) {
+                return gameLogic.deleteFruit(info[0], info[1]);
+            }
+            return false;
+        }
+        
+        // Crear enemigo en esta sala
+        public void createEnemy(String type, int vine, float speed) {
+            if (gameLogic != null) {
+                if (type.equals("RED")) {
+                    gameLogic.createRedCrocodile(vine, speed);
+                } else if (type.equals("BLUE")) {
+                    gameLogic.createBlueCrocodile(vine, speed);
+                }
+            }
+        }
+        
+        public void addSpectator() {
+            spectatorCount++;
+        }
+        
+        public void removeSpectator() {
+            spectatorCount = Math.max(0, spectatorCount - 1);
+        }
+        
+        // Getters para estadísticas
+        public int getCurrentLevel() {
+            return gameLogic != null ? gameLogic.getCurrentLevel() : 1;
+        }
+        
+        public int getEnemyCount() {
+            return gameLogic != null ? gameLogic.getEnemyCount() : 0;
+        }
+        
+        public int getFruitCount() {
+            return fruitMap.size();
+        }
+    }
+
     public DonkeyKongServer(ServerConfig config) {
         super(config);
-        this.gameLogic = new GameLogic();
+        // Inicializar GameLogic global para CLI
+        globalGameLogic = new GameLogic();
+        globalGameLogic.changeLevel(1);
     }
     
     public DonkeyKongServer(int port) {
-        this(new ServerConfig(port, 2, 2, 60)); // 2 jugadores, 2 espectadores/jugador, 60 FPS
+        this(new ServerConfig(port, 2, 2, 60));
     }
     
     @Override
-    protected ClientHandler createClient(Socket socket) { //aquí se usa el patrón Factory DonkeyKongServer lo implementa desde GameServer
+    protected ClientHandler createClient(Socket socket) {
         try {
             return new DKClientHandler(socket, this);
         } catch (IOException e) {
@@ -50,52 +125,93 @@ public class DonkeyKongServer extends GameServer {
     }
     
     @Override
-protected void update(double delta, boolean crash) {
-
-    // Procesar eventos pendientes (otros tipos)
-    MessageProtocol.Message evt;
-    while ((evt = gameEvents.poll()) != null) {
-
-        System.out.println("\n[SERVER UPDATE] Procesando evento: " + evt.command);
-
-        switch (evt.command) {
-
-            // --- ENEMY_HIT ya viene en cola (mantener) ---
-            case "ENEMY_HIT": {
-                int playerId = evt.getParamAsInt(0, -1);
-                int enemyId = evt.getParamAsInt(1, -1);
-                int damage  = evt.getParamAsInt(2, 1);
-
-
-                if (gameLogic != null) {
-                    gameLogic.enemyHit(playerId, enemyId, damage);
-                } else {
-                    System.out.println("  -> gameLogic es NULL, no se puede procesar ENEMY_HIT.");
+    protected void update(double delta, boolean crash) {
+        // Actualizar cada sala de juego independientemente
+        for (GameRoom room : gameRooms.values()) {
+            // Procesar eventos de esta sala
+            MessageProtocol.Message evt;
+            while ((evt = room.gameEvents.poll()) != null) {
+                switch (evt.command) {
+                    case "ENEMY_HIT": {
+                        int playerId = evt.getParamAsInt(0, -1);
+                        int enemyId = evt.getParamAsInt(1, -1);
+                        int damage = evt.getParamAsInt(2, 1);
+                        
+                        if (room.gameLogic != null) {
+                            room.gameLogic.enemyHit(playerId, enemyId, damage);
+                        }
+                        break;
+                    }
                 }
-                break;
             }
-
-            default:
-                System.out.println("  -> Evento desconocido en cola: " + evt.command);
-                break;
+            
+            // Actualizar lógica del juego de esta sala
+            if (room.gameLogic != null) {
+                room.gameLogic.update(delta);
+                
+                // Broadcast estado actualizado a todos en la sala
+                String gameState = room.gameLogic.serialize();
+                broadcastToRoom(room.roomId, gameState);
+            }
         }
     }
+    
+    /**
+     * Broadcast solo a clientes de una sala específica
+     */
+public void broadcastToRoom(int roomId, String message) {
+    if (message == null || message.isEmpty()) return;
+    
+    
 
-    // Ejecutar update del juego
-    if (gameLogic != null) {
-        gameLogic.update(delta);
+    for (ClientHandler client : clients) {
+        if (client instanceof DKClientHandler) {
+            DKClientHandler dkClient = (DKClientHandler) client;
+            Integer clientRoom = dkClient.getGameRoomId();
+            
+            // Enviar solo a los de esta sala (jugador + espectadores)
+            if (clientRoom != null && clientRoom == roomId) {
+                sendTo(client, message);
+            }
+        }
     }
 }
 
-
-
+/**
+ * Obtener sala por ID (hacer público)
+ */
+public GameRoom getRoomById(int roomId) {  // Cambiado de private a public
+    return gameRooms.get(roomId);
+}
+    
+    /**
+     * Broadcast a todos los clientes (para compatibilidad CLI)
+     * Cambiado a public para coincidir con la declaración en la clase padre
+     */
+    @Override
+    public void broadcast(String message) {
+        if (message == null || message.isEmpty()) return;
+        
+        for (ClientHandler client : clients) {
+            sendTo(client, message);
+        }
+    }
+    
     @Override
     protected String getGameState() {
-        // Serializar estado del juego para enviar a clientes
-        if (gameLogic == null) {
-            return MessageProtocol.encode("GAMESTATE", "0", "PLAYERS||CROCS||FRUITS|");
+        // Serializar estado del juego (para compatibilidad)
+        StringBuilder sb = new StringBuilder();
+        sb.append("GAMESTATE|");
+        sb.append(gameRooms.size()).append("|");
+        
+        for (GameRoom room : gameRooms.values()) {
+            sb.append("ROOM:").append(room.roomId).append(":");
+            sb.append("PLAYER:").append(room.playerName).append(":");
+            sb.append("LEVEL:").append(room.gameLogic != null ? room.gameLogic.getCurrentLevel() : 1).append(":");
+            sb.append("FRUITS:").append(room.fruitMap.size()).append("|");
         }
-        return gameLogic.serialize();
+        
+        return sb.toString();
     }
     
     @Override
@@ -112,119 +228,123 @@ protected void update(double delta, boolean crash) {
                 handleConnect(dkClient, m);
                 break;
                 
-            case "MOVE":
-                handleMove(dkClient, m);
-                break;
-
-            // HIT: ahora procesamos HIT por id (síncrono) para poder saber quién lo hizo
-            // Formato esperado: HIT|<fruitId>|<playerId>
-
             case "POS": {
                 if (!m.hasParams(3)) {
-                    sendTo(client, MessageProtocol.encode("ERROR", "INVALID_PARAMS", "Expected: POS|PLAYER_ID|X|Y"));
+                    sendTo(client, MessageProtocol.encode("ERROR", "INVALID_PARAMS"));
                     break;
                 }
+                
                 int pid = m.getParamAsInt(0, -1);
                 String xs = m.getParam(1);
                 String ys = m.getParam(2);
-
-                // Broadcast a TODOS los clientes (incluye observadores)
-                String posMsg = MessageProtocol.encode("PLAYER_POS", String.valueOf(pid), xs, ys);
-                broadcast(posMsg);
-
-                // (Opcional) Actualizar estado interno si GameLogic expone API:
-                // if (gameLogic != null) gameLogic.updatePlayerPosition(pid, Float.parseFloat(xs), Float.parseFloat(ys));
-
-                // No respondemos al cliente explicitamente (pero se podría)
+                
+                Integer roomId = dkClient.getGameRoomId();
+                if (roomId != null) {
+                    String posMsg = MessageProtocol.encode("PLAYER_POS", 
+                        String.valueOf(roomId), String.valueOf(pid), xs, ys);
+                    broadcastToRoom(roomId, posMsg);
+                }
                 break;
             }
-
+                
             case "HIT": {
                 if (!m.hasParams(2)) {
-                    sendTo(client, MessageProtocol.encode("ERROR", "INVALID_PARAMS", "Expected: HIT|FRUIT_ID|PLAYER_ID"));
+                    sendTo(client, MessageProtocol.encode("ERROR", "INVALID_PARAMS"));
                     break;
                 }
+                
                 int fruitId = m.getParamAsInt(0, -1);
                 int pId = m.getParamAsInt(1, -1);
-                if (fruitId < 0) {
-                    sendTo(client, MessageProtocol.encode("ERROR", "INVALID_FRUIT_ID"));
+                Integer roomId = dkClient.getGameRoomId();
+                
+                if (roomId == null || fruitId < 0) {
+                    sendTo(client, MessageProtocol.encode("ERROR", "INVALID_STATE"));
                     break;
                 }
-                // Lookup fruit info
-                int[] info = fruitMap.remove(fruitId);
+                
+                GameRoom room = getRoomById(roomId);
+                if (room == null) {
+                    sendTo(client, MessageProtocol.encode("ERROR", "ROOM_NOT_FOUND"));
+                    break;
+                }
+                
+                // Buscar fruta en la sala específica
+                int[] info = room.fruitMap.remove(fruitId);
                 if (info == null) {
-                    // Puede que el cliente esté usando formato antiguo (vine,height)
-                    // Para compatibilidad, si param0 es vine en vez de id, intentar manejar
-                    System.out.println("[SERVER] HIT recibido pero fruitId no encontrado: " + fruitId);
-                    sendTo(client, MessageProtocol.encode("ERROR", "FRUIT_NOT_FOUND", String.valueOf(fruitId)));
+                    sendTo(client, MessageProtocol.encode("ERROR", "FRUIT_NOT_FOUND"));
                     break;
                 }
+                
                 int vine = info[0];
                 int height = info[1];
                 int points = info[2];
-
-                System.out.println("[SERVER] HIT procesado: fruitId=" + fruitId + " vine=" + vine + " height=" + height + " by player " + pId);
-
-                // Delegar a gameLogic para eliminar la fruta (si existe)
-                boolean deleted = false;
-                if (gameLogic != null) {
-                    deleted = gameLogic.deleteFruit(vine, height);
-                } else {
-                    // Si no hay gameLogic, consideramos que sí se "eliminó" lógicamente
-                    deleted = true;
-                }
-
-                // Broadcast FRUIT_DELETED y actualizar score del jugador
+                
+                boolean deleted = room.gameLogic.deleteFruit(vine, height);
+                
                 if (deleted) {
-                    String delMsg = MessageProtocol.encode("FRUIT_DELETED", String.valueOf(fruitId), String.valueOf(pId), String.valueOf(points));
-                    broadcast(delMsg);
-
-                    // Incrementar score en el handler (si es jugador)
+                    String delMsg = MessageProtocol.encode("FRUIT_DELETED", 
+                        String.valueOf(fruitId), String.valueOf(pId), String.valueOf(points));
+                    broadcastToRoom(roomId, delMsg);
+                    
                     if (dkClient.isPlayer()) {
                         dkClient.addScore(points);
-                        // Enviar actualización de puntaje a TODOS (puede ser optimizado para enviar sólo al jugador)
-                        String scoreMsg = MessageProtocol.encode("SCORE_UPDATE", String.valueOf(dkClient.getPlayerId()), String.valueOf(dkClient.getScore()));
-                        broadcast(scoreMsg);
+                        String scoreMsg = MessageProtocol.encode("SCORE_UPDATE", 
+                            String.valueOf(pId), String.valueOf(dkClient.getScore()));
+                        broadcastToRoom(roomId, scoreMsg);
                     }
-                    System.out.println("[SERVER] FRUIT_DELETED broadcast id=" + fruitId + " points=" + points);
-                } else {
-                    sendTo(client, MessageProtocol.encode("ERROR", "DELETE_FAILED"));
                 }
                 break;
             }
-
-            case "ENEMY_HIT":
-                System.out.println("[SERVER] ENEMY_HIT recibido de cliente: " + dkClient.getPlayerName());
-                // Meter el evento correcto a la cola
-                gameEvents.add(m);   // ✅ Aquí debe ir m, NO msg
-                break;
                 
-
+            case "ENEMY_HIT": {
+                Integer roomId = dkClient.getGameRoomId();
+                if (roomId != null) {
+                    GameRoom room = getRoomById(roomId);
+                    if (room != null) {
+                        room.gameEvents.add(m);
+                    }
+                }
+                break;
+            }
+                
+            case "ACTION": {
+                if (m.hasParams(3)) {
+                    int pid = m.getParamAsInt(0, -1);
+                    String action = m.getParam(1);
+                    String param = m.getParam(2);
+                    
+                    if (action.equals("LEVEL_UP")) {
+                        Integer roomId = dkClient.getGameRoomId();
+                        if (roomId != null) {
+                            GameRoom room = getRoomById(roomId);
+                            if (room != null && room.gameLogic != null) {
+                                int newLevel = Integer.parseInt(param);
+                                room.gameLogic.changeLevel(newLevel);
+                                System.out.println("[DK] Sala " + roomId + " subió a nivel " + newLevel);
+                            }
+                        }
+                    }
+                }
+                break;
+            }
+                
             case "ADMIN":
                 handleAdmin(dkClient, m);
                 break;
                 
-            case "DISCONNECT":
-                disconnectClient(dkClient);
-                break;
-                
-            case "PING":
-                sendTo(client, MessageProtocol.encode("PONG"));
-                break;
-                
             default:
-                sendTo(client, MessageProtocol.encode("ERROR", "INVALID_COMMAND", m.command));
+                System.out.println("[DK] Comando no reconocido: " + m.command);
                 break;
         }
     }
     
     /**
-     * Maneja la conexión de un cliente (PLAYER o SPECTATOR)
-     * Formato: CONNECT|PLAYER|<nombre>  o  CONNECT|SPECTATOR|<nombre>
+     * Maneja la conexión de un cliente
      */
     private void handleConnect(DKClientHandler client, MessageProtocol.Message m) {
         if (!m.hasParams(2)) {
-            sendTo(client, MessageProtocol.encode("ERROR", "INVALID_PARAMS", "Expected: CONNECT|TYPE|NAME"));
+            sendTo(client, MessageProtocol.encode("ERROR", "INVALID_PARAMS", 
+                "Expected: CONNECT|TYPE|NAME[|ROOM_ID]"));
             return;
         }
         
@@ -232,47 +352,82 @@ protected void update(double delta, boolean crash) {
         String name = m.getParam(1);
         
         if (type.equals("PLAYER")) {
-            // Verificar límite de jugadores
-            if (playerCount >= config.getMaxPlayers()) {
-                sendTo(client, MessageProtocol.encode("ERROR", "MAX_PLAYERS_REACHED"));
+            // Verificar si ya hay demasiados jugadores
+            if (playerCount >= 2) { // Máximo 2 jugadores
+                sendTo(client, MessageProtocol.encode("ERROR", "MAX_PLAYERS_REACHED", 
+                    "Ya hay 2 jugadores activos"));
                 disconnectClient(client);
                 return;
             }
             
-            // Asignar ID de jugador
+            // Crear nueva sala para este jugador
+            int roomId = nextRoomId.getAndIncrement();
+            int playerId = roomId; // Usar roomId como playerId
+            
+            GameRoom room = new GameRoom(roomId, playerId, name);
+            gameRooms.put(roomId, room);
             playerCount++;
-            client.setPlayerId(playerCount);
+            
+            client.setPlayerId(playerId);
             client.setPlayerName(name);
+            client.setGameRoomId(roomId);
             client.setClientType(DKClientHandler.ClientType.PLAYER);
             
-            // Notificar al GameLogic (Ariel implementa esto)
-            if (gameLogic != null) {
-                gameLogic.addPlayer(playerCount, name);
-            }
-            
-            // Responder al cliente con su ID, vidas y score inicial
             sendTo(client, MessageProtocol.encode("OK", "PLAYER_ID", 
-                String.valueOf(playerCount), "LIVES", "3", "SCORE", "0"));
+                String.valueOf(playerId), "ROOM_ID", String.valueOf(roomId), 
+                "LIVES", "3", "SCORE", "0"));
             
-            System.out.println("[DK] Jugador conectado: " + name + " (ID: " + playerCount + ")");
+            System.out.println("[DK] Jugador conectado: " + name + 
+                " (ID: " + playerId + ", Sala: " + roomId + ")");
+            
+            // Notificar a posibles espectadores de esta sala
+            String joinMsg = MessageProtocol.encode("PLAYER_JOINED", 
+                String.valueOf(playerId), name);
+            broadcastToRoom(roomId, joinMsg);
             
         } else if (type.equals("SPECTATOR")) {
-            // Verificar límite de espectadores
-            int maxSpectators = config.getMaxPlayers() * config.getMaxSpectatorsPerPlayer();
-            if (spectatorCount >= maxSpectators) {
-                sendTo(client, MessageProtocol.encode("ERROR", "MAX_SPECTATORS_REACHED"));
+            // Espectador debe especificar qué sala observar
+            int targetRoomId = 1; // Default: sala 1
+            
+            if (m.hasParams(3)) {
+                targetRoomId = m.getParamAsInt(2, 1);
+            }
+            
+            // Verificar que la sala existe
+            GameRoom targetRoom = getRoomById(targetRoomId);
+            if (targetRoom == null) {
+                sendTo(client, MessageProtocol.encode("ERROR", "ROOM_NOT_FOUND", 
+                    "La sala " + targetRoomId + " no existe. Use 'rooms' para ver salas activas."));
+                disconnectClient(client);
+                return;
+            }
+            
+            // Verificar límite de espectadores (máximo 2 por sala)
+            if (targetRoom.spectatorCount >= 2) {
+                sendTo(client, MessageProtocol.encode("ERROR", "MAX_SPECTATORS_REACHED", 
+                    "La sala " + targetRoomId + " ya tiene 2 espectadores"));
                 disconnectClient(client);
                 return;
             }
             
             spectatorCount++;
+            targetRoom.addSpectator();
+            
             client.setPlayerName(name);
+            client.setGameRoomId(targetRoomId);
             client.setClientType(DKClientHandler.ClientType.SPECTATOR);
             
-            // Responder al cliente
-            sendTo(client, MessageProtocol.encode("OK", "SPECTATOR_ID", String.valueOf(spectatorCount)));
+            sendTo(client, MessageProtocol.encode("OK", "SPECTATOR_ID", 
+                String.valueOf(spectatorCount), "ROOM_ID", String.valueOf(targetRoomId)));
             
-            System.out.println("[DK] Espectador conectado: " + name);
+            System.out.println("[DK] Espectador conectado: " + name + 
+                " (Observando Sala: " + targetRoomId + ")");
+            
+            // Enviar estado actual de la sala al espectador
+            if (targetRoom.gameLogic != null) {
+                String state = targetRoom.gameLogic.serialize();
+                sendTo(client, state);
+            }
             
         } else if (type.equals("ADMIN")) {
             client.setPlayerName(name);
@@ -286,42 +441,13 @@ protected void update(double delta, boolean crash) {
     }
     
     /**
-     * Maneja movimiento de jugador
-     * Formato: MOVE|<player_id>|<direction>
-     */
-    private void handleMove(DKClientHandler client, MessageProtocol.Message m) {
-        if (!client.isPlayer()) {
-            sendTo(client, MessageProtocol.encode("ERROR", "NOT_A_PLAYER"));
-            return;
-        }
-        
-        if (!m.hasParams(2)) {
-            sendTo(client, MessageProtocol.encode("ERROR", "INVALID_PARAMS", "Expected: MOVE|PLAYER_ID|DIRECTION"));
-            return;
-        }
-        
-        int playerId = m.getParamAsInt(0, -1);
-        String direction = m.getParam(1);
-        
-        // Verificar que el jugador solo mueve su propio personaje
-        if (client.getPlayerId() != playerId) {
-            sendTo(client, MessageProtocol.encode("ERROR", "INVALID_PLAYER_ID"));
-            return;
-        }
-        
-        // Delegar al GameLogic (Ariel implementa esto)
-        if (gameLogic != null) {
-            gameLogic.movePlayer(playerId, direction);
-        }
-    }
-    
-    /**
      * Maneja comandos de administrador
-     * Formato: ADMIN|<subcommand>|<params...>
      */
     private void handleAdmin(DKClientHandler client, MessageProtocol.Message m) {
-        // En producción, verificarías autenticación
-        // if (!client.isAdmin()) { ... }
+        if (!client.isAdmin()) {
+            sendTo(client, MessageProtocol.encode("ERROR", "NOT_ADMIN"));
+            return;
+        }
         
         if (!m.hasParams(1)) {
             sendTo(client, MessageProtocol.encode("ERROR", "INVALID_ADMIN_COMMAND"));
@@ -331,142 +457,135 @@ protected void update(double delta, boolean crash) {
         String subCommand = m.getParam(0);
         
         switch (subCommand) {
-            case "CREATE_CROC_RED":
-                if (m.hasParams(3)) {
-                    int vine = m.getParamAsInt(1, -1);
-                    float speed = m.getParamAsFloat(2, 1.0f);
-                    if (gameLogic != null) {
-                        gameLogic.createRedCrocodile(vine, speed);
-                        sendTo(client, MessageProtocol.encode("OK", "CROC_CREATED"));
-                    }
-                } else {
-                    sendTo(client, MessageProtocol.encode("ERROR", "INVALID_PARAMS"));
+            case "CREATE_FRUIT": {
+                if (!m.hasParams(5)) {
+                    sendTo(client, MessageProtocol.encode("ERROR", "INVALID_PARAMS", 
+                        "Formato: ADMIN|CREATE_FRUIT|ROOM_ID|VINE|HEIGHT|POINTS"));
+                    return;
                 }
-                break;
                 
-            case "CREATE_CROC_BLUE":
-                if (m.hasParams(3)) {
-                    int vine = m.getParamAsInt(1, -1);
-                    float speed = m.getParamAsFloat(2, 1.0f);
-                    if (gameLogic != null) {
-                        gameLogic.createBlueCrocodile(vine, speed);
-                        sendTo(client, MessageProtocol.encode("OK", "CROC_CREATED"));
-                    }
-                } else {
-                    sendTo(client, MessageProtocol.encode("ERROR", "INVALID_PARAMS"));
-                }
-                break;
+                int targetRoomId = m.getParamAsInt(1, -1);
+                int vine = m.getParamAsInt(2, -1);
+                int height = m.getParamAsInt(3, -1);
+                int points = m.getParamAsInt(4, 100);
                 
-            case "CREATE_FRUIT":
-                if (m.hasParams(4)) {
-                    int vine = m.getParamAsInt(1, -1);
-                    int height = m.getParamAsInt(2, -1);
-                    int points = m.getParamAsInt(3, 100);
-                    if (gameLogic != null) {
-                        gameLogic.createFruit(vine, height, points);
-                    }
-                    // Assign an id and store mapping
-                    int fid = nextFruitId.getAndIncrement();
-                    fruitMap.put(fid, new int[]{vine, height, points});
-                    // Broadcast with id
-                    String msg = MessageProtocol.encode("FRUIT_CREATED",
-                                                        String.valueOf(fid),
-                                                        String.valueOf(vine),
-                                                        String.valueOf(height),
-                                                        String.valueOf(points));
-                    broadcast(msg);
-                    sendTo(client, MessageProtocol.encode("OK", "FRUIT_CREATED", String.valueOf(fid)));
-                } else {
-                    sendTo(client, MessageProtocol.encode("ERROR", "INVALID_PARAMS"));
+                GameRoom room = getRoomById(targetRoomId);
+                if (room == null) {
+                    sendTo(client, MessageProtocol.encode("ERROR", "ROOM_NOT_FOUND", 
+                        "Sala " + targetRoomId + " no existe"));
+                    return;
                 }
-                break;
-            
-            case "CREATE_CCA":
-                if (m.hasParams(4)) {
-                    int vine = m.getParamAsInt(1, -1);
-                    int height = m.getParamAsInt(2, -1);
-                    int points = m.getParamAsInt(3, 100);
-                    if (gameLogic != null) {
-                        gameLogic.createFruit(vine, height, points);
-                    }
-                    // For compatibility, also respond as CCA_CREATED without id
-                    int fid = nextFruitId.getAndIncrement();
-                    fruitMap.put(fid, new int[]{vine, height, points});
-                    String msg = MessageProtocol.encode("CCA_CREATED",
-                                                        String.valueOf(vine),
-                                                        String.valueOf(height),
-                                                        String.valueOf(points));
-                    broadcast(msg);
-                    // Also broadcast FRUIT_CREATED with id for clients expecting id
-                    broadcast(MessageProtocol.encode("FRUIT_CREATED",
-                                                     String.valueOf(fid),
-                                                     String.valueOf(vine),
-                                                     String.valueOf(height),
-                                                     String.valueOf(points)));
-                    sendTo(client, MessageProtocol.encode("OK", "CCA_CREATED", String.valueOf(fid)));
-                } else {
-                    sendTo(client, MessageProtocol.encode("ERROR", "INVALID_PARAMS"));
-                }
-                break;
                 
-            case "DELETE_FRUIT":
-                // Mantener compatibilidad: DELETE_FRUIT|vine|height
-                if (m.hasParams(3)) {
-                    int vine = m.getParamAsInt(1, -1);
-                    int height = m.getParamAsInt(2, -1);
-                    boolean deleted = false;
-                    if (gameLogic != null) {
-                        deleted = gameLogic.deleteFruit(vine, height);
-                    } else {
-                        deleted = true;
-                    }
-                    // Buscar id(s) que tengan vine+height y eliminarlos
-                    Integer foundId = null;
-                    for (Map.Entry<Integer,int[]> e : fruitMap.entrySet()) {
-                        int[] info = e.getValue();
-                        if (info[0] == vine && info[1] == height) {
-                            foundId = e.getKey();
-                            fruitMap.remove(foundId);
-                            break;
-                        }
-                    }
-                    if (deleted) {
-                        if (foundId != null) {
-                            broadcast(MessageProtocol.encode("FRUIT_DELETED", String.valueOf(foundId), "0", String.valueOf(0)));
-                        }
-                        sendTo(client, MessageProtocol.encode("OK", "FRUIT_DELETED"));
-                    } else {
-                        sendTo(client, MessageProtocol.encode("ERROR", "FRUIT_NOT_FOUND"));
-                    }
+                if (vine < 1 || vine > 9) {
+                    sendTo(client, MessageProtocol.encode("ERROR", "INVALID_VINE"));
+                    return;
+                }
+                
+                // Crear fruta en la sala específica
+                int fid = room.createFruit(vine, height, points);
+                
+                // Broadcast solo a esa sala
+                String msgToSend = MessageProtocol.encode("FRUIT_CREATED",
+        String.valueOf(fid), String.valueOf(vine),
+        String.valueOf(height), String.valueOf(points));
+    
+    broadcastToRoom(targetRoomId, msgToSend);  // ← CAMBIADO: usar broadcastToRoom
+    sendTo(client, MessageProtocol.encode("OK", "FRUIT_CREATED", 
+        "id=" + fid, "room=" + targetRoomId));
+    break;
+            }
+                
+            case "CREATE_CCA": {
+                if (!m.hasParams(3)) {
+                    sendTo(client, MessageProtocol.encode("ERROR", "INVALID_PARAMS",
+                        "Formato: ADMIN|CREATE_CCA|ROOM_ID|VINE"));
+                    return;
+                }
+                
+                int targetRoomId = m.getParamAsInt(1, -1);
+                int vine = m.getParamAsInt(2, -1);
+                
+                GameRoom room = getRoomById(targetRoomId);
+                if (room == null) {
+                    sendTo(client, MessageProtocol.encode("ERROR", "ROOM_NOT_FOUND"));
+                    return;
+                }
+                
+                room.createEnemy("BLUE", vine, 0);
+                
+                String msgToSend = MessageProtocol.encode("CCA_CREATED",
+                    String.valueOf(vine), "0", "0");
+                
+                broadcastToRoom(targetRoomId, msgToSend);
+                sendTo(client, MessageProtocol.encode("OK", "CCA_CREATED"));
+                
+                System.out.println("[ADMIN] Cocodrilo Azul creado en sala " + targetRoomId + " liana=" + vine);
+                break;
+            }
+                
+            case "CREATE_CCR": {
+                if (!m.hasParams(3)) {
+                    sendTo(client, MessageProtocol.encode("ERROR", "INVALID_PARAMS",
+                        "Formato: ADMIN|CREATE_CCR|ROOM_ID|VINE"));
+                    return;
+                }
+                
+                int targetRoomId = m.getParamAsInt(1, -1);
+                int vine = m.getParamAsInt(2, -1);
+                
+                GameRoom room = getRoomById(targetRoomId);
+                if (room == null) {
+                    sendTo(client, MessageProtocol.encode("ERROR", "ROOM_NOT_FOUND"));
+                    return;
+                }
+                
+                room.createEnemy("RED", vine, 0);
+                
+                String msgToSend = MessageProtocol.encode("CCR_CREATED",
+                    String.valueOf(vine), "0", "0");
+                
+                broadcastToRoom(targetRoomId, msgToSend);
+                sendTo(client, MessageProtocol.encode("OK", "CCR_CREATED"));
+                
+                System.out.println("[ADMIN] Cocodrilo Rojo creado en sala " + targetRoomId + " liana=" + vine);
+                break;
+            }
+                
+            case "DELETE_FRUIT_BY_ID": {
+                if (!m.hasParams(3)) {
+                    sendTo(client, MessageProtocol.encode("ERROR", "INVALID_PARAMS",
+                        "Formato: ADMIN|DELETE_FRUIT_BY_ID|ROOM_ID|FRUIT_ID"));
+                    return;
+                }
+                
+                int targetRoomId = m.getParamAsInt(1, -1);
+                int fid = m.getParamAsInt(2, -1);
+                
+                GameRoom room = getRoomById(targetRoomId);
+                if (room == null) {
+                    sendTo(client, MessageProtocol.encode("ERROR", "ROOM_NOT_FOUND"));
+                    return;
+                }
+                
+                int[] info = room.fruitMap.get(fid);
+                if (info == null) {
+                    sendTo(client, MessageProtocol.encode("ERROR", "FRUIT_NOT_FOUND"));
+                    return;
+                }
+                
+                int points = info[2];
+                boolean deleted = room.deleteFruit(fid);
+                
+                if (deleted) {
+                    String delMsg = MessageProtocol.encode("FRUIT_DELETED",
+                        String.valueOf(fid), "0", String.valueOf(points));
+                    broadcastToRoom(targetRoomId, delMsg);
+                    sendTo(client, MessageProtocol.encode("OK", "FRUIT_DELETED", String.valueOf(fid)));
                 } else {
-                    sendTo(client, MessageProtocol.encode("ERROR", "INVALID_PARAMS"));
+                    sendTo(client, MessageProtocol.encode("ERROR", "DELETE_FAILED"));
                 }
                 break;
-
-            case "DELETE_FRUIT_BY_ID":
-                // Nuevo: ADMIN|DELETE_FRUIT_BY_ID|<id>
-                if (m.hasParams(2)) {
-                    int fid = m.getParamAsInt(1, -1);
-                    int[] info = fruitMap.remove(fid);
-                    if (info != null) {
-                        int vine = info[0];
-                        int height = info[1];
-                        boolean deleted = false;
-                        if (gameLogic != null) deleted = gameLogic.deleteFruit(vine, height);
-                        else deleted = true;
-                        if (deleted) {
-                            broadcast(MessageProtocol.encode("FRUIT_DELETED", String.valueOf(fid), "0", String.valueOf(info[2])));
-                            sendTo(client, MessageProtocol.encode("OK", "FRUIT_DELETED", String.valueOf(fid)));
-                        } else {
-                            sendTo(client, MessageProtocol.encode("ERROR", "DELETE_FAILED"));
-                        }
-                    } else {
-                        sendTo(client, MessageProtocol.encode("ERROR", "FRUIT_NOT_FOUND"));
-                    }
-                } else {
-                    sendTo(client, MessageProtocol.encode("ERROR", "INVALID_PARAMS"));
-                }
-                break;
+            }
                 
             default:
                 sendTo(client, MessageProtocol.encode("ERROR", "UNKNOWN_ADMIN_COMMAND", subCommand));
@@ -480,21 +599,56 @@ protected void update(double delta, boolean crash) {
             DKClientHandler dkClient = (DKClientHandler) client;
             
             if (dkClient.isPlayer()) {
-                playerCount = Math.max(0, playerCount - 1);
-                if (gameLogic != null && dkClient.getPlayerId() != null) {
-                    gameLogic.removePlayer(dkClient.getPlayerId());
+                Integer roomId = dkClient.getGameRoomId();
+                if (roomId != null) {
+                    // Remover la sala cuando el jugador se desconecta
+                    GameRoom room = gameRooms.remove(roomId);
+                    if (room != null) {
+                        playerCount--;
+                        System.out.println("[DK] Sala " + roomId + " cerrada (Jugador: " + room.playerName + ")");
+                        
+                        // Notificar a espectadores de esta sala
+                        String leftMsg = MessageProtocol.encode("PLAYER_LEFT", 
+                            String.valueOf(dkClient.getPlayerId()));
+                        broadcastToRoom(roomId, leftMsg);
+                        
+                        // Desconectar a todos los espectadores de esta sala
+                        for (ClientHandler c : clients.toArray(new ClientHandler[0])) {
+                            if (c instanceof DKClientHandler) {
+                                DKClientHandler other = (DKClientHandler) c;
+                                if (other.isSpectator() && roomId.equals(other.getGameRoomId())) {
+                                    disconnectClient(other);
+                                }
+                            }
+                        }
+                    }
                 }
-                System.out.println("[DK] Jugador desconectado: " + dkClient.getPlayerName());
             } else if (dkClient.isSpectator()) {
-                spectatorCount = Math.max(0, spectatorCount - 1);
-                System.out.println("[DK] Espectador desconectado: " + dkClient.getPlayerName());
+                Integer roomId = dkClient.getGameRoomId();
+                if (roomId != null) {
+                    GameRoom room = getRoomById(roomId);
+                    if (room != null) {
+                        room.removeSpectator();
+                        spectatorCount = Math.max(0, spectatorCount - 1);
+                    }
+                }
             }
         }
         
         super.disconnectClient(client);
     }
     
-    // Main para ejecutar el servidor
+    // Método para obtener estadísticas del servidor
+    public String getStats() {
+        StringBuilder stats = new StringBuilder();
+        stats.append("=== ESTADÍSTICAS DEL SERVIDOR ===\n");
+        stats.append("Jugadores activos: ").append(playerCount).append("\n");
+        stats.append("Espectadores activos: ").append(spectatorCount).append("\n");
+        stats.append("Salas activas: ").append(gameRooms.size()).append("\n");
+        stats.append("================================");
+        return stats.toString();
+    }
+    
     // Main para ejecutar el servidor
     public static void main(String[] args) {
         int port = 5000;
@@ -511,7 +665,6 @@ protected void update(double delta, boolean crash) {
         System.out.println("  Puerto: " + port);
         System.out.println("  Max Jugadores: 2");
         System.out.println("  Max Espectadores: 4");
-        System.out.println("  Factory Pattern: ✓");
         System.out.println("  Nivel inicial: 1");
         System.out.println("=================================");
         
@@ -527,223 +680,366 @@ protected void update(double delta, boolean crash) {
         
         // CLI simple
         try (Scanner scanner = new Scanner(System.in)) {
-            System.out.println("\nComandos disponibles:");
-            System.out.println("  stats  - Mostrar estadísticas del servidor");
-            System.out.println("  cf     - Crear Fruta (puntos según nivel)");
-            System.out.println("  cca    - Crear Cocodrilo Azul (velocidad según nivel)");
-            System.out.println("  ccr    - Crear Cocodrilo Rojo (velocidad según nivel)");
-            System.out.println("  df     - Delete Fruit (interactive)  -> ingresa ID");
-            System.out.println("  deletef <id> - Delete Fruit by id inline");
-            System.out.println("  level  - Cambiar nivel (cambia Factory automáticamente)");
-            System.out.println("  info   - Información del estado del juego");
-            System.out.println("  quit   - Detener servidor");
-            System.out.println();
+    System.out.println("\nComandos disponibles:");
+    System.out.println("  stats  - Mostrar estadísticas del servidor");
+    System.out.println("  rooms  - Mostrar salas activas");
+    System.out.println("  cf     - Crear Fruta en sala específica");
+    System.out.println("  cca    - Crear Cocodrilo Azul en sala específica");
+    System.out.println("  ccr    - Crear Cocodrilo Rojo en sala específica");
+    System.out.println("  df     - Delete Fruit (interactive)");
+    System.out.println("  deletef <id> - Delete Fruit by id inline");
+    System.out.println("  level <room> <nivel> - Cambiar nivel de una sala");
+    System.out.println("  quit   - Detener servidor");
+    System.out.println();
+    
+    while (scanner.hasNextLine()) {
+        String line = scanner.nextLine().trim();
+        String lower = line.toLowerCase();
+        
+        if (lower.equals("quit") || lower.equals("exit") || lower.equals("stop")) {
+            break;
             
-            while (scanner.hasNextLine()) {
-                String line = scanner.nextLine().trim();
-                String lower = line.toLowerCase();
+        } else if (lower.equals("stats")) {
+            System.out.println("\n" + server.getStats() + "\n");
+            
+        } else if (lower.equals("rooms")) {
+            System.out.println("\n╔═════════════════════════════════════════════════════════════╗");
+            System.out.println("║                     SALAS ACTIVAS                           ║");
+            System.out.println("╠═════╦═══════════╦═══════╦═════════╦═══════════╦═════════════╣");
+            System.out.println("║ Sala║ Jugador   ║ Nivel ║ Enemigos║ Frutas    ║ Espectadores║");
+            System.out.println("╠═════╬═══════════╬═══════╬═════════╬═══════════╬═════════════╣");
+            
+            for (Map.Entry<Integer, GameRoom> entry : server.gameRooms.entrySet()) {
+                GameRoom room = entry.getValue();
+                int level = room.getCurrentLevel();
+                int enemies = room.getEnemyCount();
+                int fruits = room.getFruitCount();
+                int spectators = room.spectatorCount;
                 
-                if (lower.equals("quit") || lower.equals("exit") || lower.equals("stop")) {
-                    break;
-                    
-                } else if (lower.equals("stats")) {
-                    System.out.println("\n=== ESTADÍSTICAS DEL SERVIDOR ===");
-                    System.out.println(server.stats.toString());
-                    System.out.println("Jugadores activos: " + server.playerCount);
-                    System.out.println("Espectadores activos: " + server.spectatorCount);
-                    System.out.println("==================================\n");
-                    
-                } else if (lower.equals("info")) {
-                    System.out.println("\n=== ESTADO DEL JUEGO ===");
-                    if (server.gameLogic != null) {
-                        System.out.println("Nivel actual: " + server.gameLogic.getCurrentLevel());
-                        System.out.println("Enemigos activos: " + server.gameLogic.getEnemyCount());
-                        System.out.println("Frutas activas: " + server.gameLogic.getFruitCount());
-                    } else {
-                        System.out.println("GameLogic no inicializado");
-                    }
-                    System.out.println("=========================\n");
-                    
-                } else if (lower.equals("level")) {
-                    System.out.print("Ingrese el nuevo nivel (1-3): ");
-                    String inputLevel = scanner.nextLine().trim();
-                    
-                    try {
-                        int newLevel = Integer.parseInt(inputLevel);
-                        if (newLevel < 1 || newLevel > 3) {
-                            System.out.println("[SERVER] ERROR: Nivel debe estar entre 1 y 3");
-                            continue;
-                        }
-                        
-                        if (server.gameLogic != null) {
-                            server.gameLogic.changeLevel(newLevel);
-                            System.out.println("[SERVER] ✓ Nivel cambiado a " + newLevel);
-                            System.out.println("[SERVER] La Factory ahora creará enemigos de nivel " + newLevel);
-                        }
-                    } catch (NumberFormatException e) {
-                        System.out.println("[SERVER] ERROR: Debe ingresar un número válido");
-                    }
-                    
-                } else if (lower.equals("cf")) {
-                    System.out.print("Ingrese la liana para la fruta (1-9): ");
-                    String inputVine = scanner.nextLine().trim();
-
-                    int vine;
-                    try {
-                        vine = Integer.parseInt(inputVine);
-                        if (vine < 1 || vine > 9) {
-                            System.out.println("[SERVER] ERROR: Liana debe estar entre 1 y 9");
-                            continue;
-                        }
-                    } catch (NumberFormatException e) {
-                        System.out.println("[SERVER] ERROR: Debe ingresar un número válido");
-                        continue;
-                    }
-
-                    // Altura default (puedes cambiarla si quieres)
-                    int height = 400;
-                    int points = 100;
-                    if (server.gameLogic != null) {
-                        // La factory asigna los puntos según el nivel (llamar para efecto)
-                        server.gameLogic.createFruit(vine, height, points);
-                    }
-
-                    // Asignar id y broadcast
-                    int fid = server.nextFruitId.getAndIncrement();
-                    server.fruitMap.put(fid, new int[]{vine, height, points});
-
-                    String msg = MessageProtocol.encode("FRUIT_CREATED",
-                                                        String.valueOf(fid),
-                                                        String.valueOf(vine),
-                                                        String.valueOf(height),
-                                                        String.valueOf(points));
-
-                    server.broadcast(msg);
-                    
-                    System.out.println("[SERVER] ✓ Fruta creada (id=" + fid + ") en liana " + vine + 
-                                    " (Nivel " + (server.gameLogic != null ? server.gameLogic.getCurrentLevel() : 0) + ")");
-                } else if (lower.equals("cca")) {
-                    System.out.print("Ingrese la liana para el cocodrilo azul (1-9): ");
-                    String inputVine = scanner.nextLine().trim();
-
-                    int vine;
-                    try {
-                        vine = Integer.parseInt(inputVine);
-                        if (vine < 1 || vine > 9) {
-                            System.out.println("[SERVER] ERROR: Liana debe estar entre 1 y 9");
-                            continue;
-                        }
-                    } catch (NumberFormatException e) {
-                        System.out.println("[SERVER] ERROR: Debe ingresar un número válido");
-                        continue;
-                    }
-
-                    if (server.gameLogic != null) {
-                        // La factory asigna la velocidad según el nivel
-                        server.gameLogic.createBlueCrocodile(vine, 0);
-                    }
-
-                    // Enviar a TODOS los clientes (mantener compatibilidad)
-                    String msg = MessageProtocol.encode("CCA_CREATED",
-                                                        String.valueOf(vine),
-                                                        "0",
-                                                        "0");
-
-                    server.broadcast(msg);
-                    
-                    System.out.println("[SERVER] ✓ Cocodrilo AZUL creado en liana " + vine + 
-                                    " (Nivel " + (server.gameLogic != null ? server.gameLogic.getCurrentLevel() : 0) + ")");
-                } else if (lower.equals("ccr")) {
-                    System.out.print("Ingrese la liana para el cocodrilo rojo (1-9): ");
-                    String inputVine = scanner.nextLine().trim();
-
-                    int vine;
-                    try {
-                        vine = Integer.parseInt(inputVine);
-                        if (vine < 1 || vine > 9) {
-                            System.out.println("[SERVER] ERROR: Liana debe estar entre 1 y 9");
-                            continue;
-                        }
-                    } catch (NumberFormatException e) {
-                        System.out.println("[SERVER] ERROR: Debe ingresar un número válido");
-                        continue;
-                    }
-
-                    if (server.gameLogic != null) {
-                        // La factory asigna la velocidad según el nivel
-                        server.gameLogic.createRedCrocodile(vine, 0);
-                    }
-
-                    String msg = MessageProtocol.encode("CCR_CREATED",
-                                                        String.valueOf(vine),
-                                                        "0",
-                                                        "0");
-
-                    server.broadcast(msg);
-                    
-                    System.out.println("[SERVER] ✓ Cocodrilo ROJO creado en liana " + vine + 
-                                    " (Nivel " + (server.gameLogic != null ? server.gameLogic.getCurrentLevel() : 0) + ")");
-                } else if (lower.equals("df")) {
-                    // Interactive delete by id
-                    System.out.print("Ingrese ID de fruta a eliminar: ");
-                    String idStr = scanner.nextLine().trim();
-                    try {
-                        int fid = Integer.parseInt(idStr);
-                        int[] info = server.fruitMap.remove(fid);
-                        if (info != null) {
-                            int vine = info[0];
-                            int height = info[1];
-                            int points = info[2];
-                            boolean deleted = false;
-                            if (server.gameLogic != null) deleted = server.gameLogic.deleteFruit(vine, height);
-                            else deleted = true;
-                            if (deleted) {
-                                server.broadcast(MessageProtocol.encode("FRUIT_DELETED", String.valueOf(fid), "0", String.valueOf(points)));
-                                System.out.println("[SERVER] ✓ Fruta id=" + fid + " eliminada y broadcast enviada.");
-                            } else {
-                                System.out.println("[SERVER] ERROR: No se pudo eliminar fruta en GameLogic.");
-                            }
-                        } else {
-                            System.out.println("[SERVER] ERROR: No existe fruta con id=" + fid);
-                        }
-                    } catch (NumberFormatException e) {
-                        System.out.println("[SERVER] ERROR: ID inválido");
-                    }
-                } else if (lower.startsWith("deletef ")) {
-                    // Inline deletef <id>
-                    String[] parts = line.split("\\s+");
-                    if (parts.length >= 2) {
-                        try {
-                            int fid = Integer.parseInt(parts[1]);
-                            int[] info = server.fruitMap.remove(fid);
-                            if (info != null) {
-                                int vine = info[0];
-                                int height = info[1];
-                                int points = info[2];
-                                boolean deleted = false;
-                                if (server.gameLogic != null) deleted = server.gameLogic.deleteFruit(vine, height);
-                                else deleted = true;
-                                if (deleted) {
-                                    server.broadcast(MessageProtocol.encode("FRUIT_DELETED", String.valueOf(fid), "0", String.valueOf(points)));
-                                    System.out.println("[SERVER] ✓ Fruta id=" + fid + " eliminada y broadcast enviada.");
-                                } else {
-                                    System.out.println("[SERVER] ERROR: No se pudo eliminar fruta en GameLogic.");
-                                }
-                            } else {
-                                System.out.println("[SERVER] ERROR: No existe fruta con id=" + fid);
-                            }
-                        } catch (NumberFormatException e) {
-                            System.out.println("[SERVER] ERROR: ID inválido");
-                        }
-                    } else {
-                        System.out.println("[SERVER] Uso: deletef <id>");
-                    }
-                } else {
-                    System.out.println("[SERVER] Comando desconocido: " + line);
-                    System.out.println("Escribe 'stats', 'info', 'cf', 'cca', 'ccr', 'df', 'deletef <id>', 'level' o 'quit'");
-                }
+                System.out.printf("║  %-2d ║ %-9s ║  %-4d ║  %-6d ║  %-8d ║  %-10d ║\n",
+                    room.roomId, room.playerName, level, enemies, fruits, spectators);
             }
+            System.out.println("╚═════╩═══════════╩═══════╩═════════╩═══════════╩═════════════╝\n");
+            
+        } else if (lower.startsWith("level ")) {
+            // Formato: level <room> <nivel>
+            String[] parts = line.split("\\s+");
+            if (parts.length >= 3) {
+                try {
+                    int roomId = Integer.parseInt(parts[1]);
+                    int newLevel = Integer.parseInt(parts[2]);
+                    
+                    if (newLevel < 1 || newLevel > 3) {
+                        System.out.println("[SERVER] ERROR: Nivel debe estar entre 1 y 3");
+                        continue;
+                    }
+                    
+                    GameRoom room = server.getRoomById(roomId);
+                    if (room == null) {
+                        System.out.println("[SERVER] ERROR: Sala " + roomId + " no existe");
+                        continue;
+                    }
+                    
+                    if (room.gameLogic != null) {
+                        room.gameLogic.changeLevel(newLevel);
+                        System.out.println("[SERVER] ✓ Sala " + roomId + " cambiada a nivel " + newLevel);
+                    }
+                    
+                } catch (NumberFormatException e) {
+                    System.out.println("[SERVER] ERROR: Formato: level <sala> <nivel>");
+                }
+            } else {
+                System.out.println("[SERVER] Uso: level <sala> <nivel>");
+            }
+            
+        } else if (lower.equals("cf")) {
+            System.out.print("Ingrese número de sala (1-" + server.gameRooms.size() + "): ");
+            String roomStr = scanner.nextLine().trim();
+            
+            int roomId;
+            try {
+                roomId = Integer.parseInt(roomStr);
+                GameRoom room = server.getRoomById(roomId);
+                if (room == null) {
+                    System.out.println("[SERVER] ERROR: Sala " + roomId + " no existe");
+                    continue;
+                }
+            } catch (NumberFormatException e) {
+                System.out.println("[SERVER] ERROR: Número de sala inválido");
+                continue;
+            }
+            
+            System.out.print("Ingrese la liana para la fruta (1-9): ");
+            String inputVine = scanner.nextLine().trim();
+
+            int vine;
+            try {
+                vine = Integer.parseInt(inputVine);
+                if (vine < 1 || vine > 9) {
+                    System.out.println("[SERVER] ERROR: Liana debe estar entre 1 y 9");
+                    continue;
+                }
+            } catch (NumberFormatException e) {
+                System.out.println("[SERVER] ERROR: Debe ingresar un número válido");
+                continue;
+            }
+
+            System.out.print("Ingrese altura en la liana (100-700): ");
+            String inputHeight = scanner.nextLine().trim();
+            
+            int height;
+            try {
+                height = Integer.parseInt(inputHeight);
+                if (height < 100 || height > 700) {
+                    System.out.println("[SERVER] ERROR: Altura debe estar entre 100 y 700");
+                    continue;
+                }
+            } catch (NumberFormatException e) {
+                System.out.println("[SERVER] ERROR: Altura inválida");
+                continue;
+            }
+
+            System.out.print("Ingrese puntos de la fruta (50-500): ");
+            String inputPoints = scanner.nextLine().trim();
+            
+            int points = 100;
+            try {
+                points = Integer.parseInt(inputPoints);
+                if (points < 50 || points > 500) {
+                    System.out.println("[SERVER] Usando puntos por defecto: 100");
+                    points = 100;
+                }
+            } catch (NumberFormatException e) {
+                System.out.println("[SERVER] Usando puntos por defecto: 100");
+            }
+
+            // Crear fruta en la sala específica
+            GameRoom room = server.getRoomById(roomId);
+            if (room != null) {
+                int fid = room.createFruit(vine, height, points);
+                
+                // Broadcast solo a esa sala
+                String msg = MessageProtocol.encode("FRUIT_CREATED",
+                    String.valueOf(fid),
+                    String.valueOf(vine),
+                    String.valueOf(height),
+                    String.valueOf(points));
+                
+                server.broadcastToRoom(roomId, msg);
+                
+                System.out.println("[SERVER] ✓ Fruta creada (id=" + fid + ") en Sala " + roomId + 
+                    ", liana " + vine + ", altura " + height + ", puntos " + points);
+            }
+            
+        } else if (lower.equals("cca")) {
+            System.out.print("Ingrese número de sala (1-" + server.gameRooms.size() + "): ");
+            String roomStr = scanner.nextLine().trim();
+            
+            int roomId;
+            try {
+                roomId = Integer.parseInt(roomStr);
+                GameRoom room = server.getRoomById(roomId);
+                if (room == null) {
+                    System.out.println("[SERVER] ERROR: Sala " + roomId + " no existe");
+                    continue;
+                }
+            } catch (NumberFormatException e) {
+                System.out.println("[SERVER] ERROR: Número de sala inválido");
+                continue;
+            }
+            
+            System.out.print("Ingrese la liana para el cocodrilo azul (1-9): ");
+            String inputVine = scanner.nextLine().trim();
+
+            int vine;
+            try {
+                vine = Integer.parseInt(inputVine);
+                if (vine < 1 || vine > 9) {
+                    System.out.println("[SERVER] ERROR: Liana debe estar entre 1 y 9");
+                    continue;
+                }
+            } catch (NumberFormatException e) {
+                System.out.println("[SERVER] ERROR: Debe ingresar un número válido");
+                continue;
+            }
+
+            System.out.print("Ingrese velocidad (0.5-3.0, 0 para predeterminado): ");
+            String inputSpeed = scanner.nextLine().trim();
+            
+            float speed = 0; // 0 significa usar velocidad por defecto según nivel
+            try {
+                speed = Float.parseFloat(inputSpeed);
+                if (speed < 0) speed = 0;
+            } catch (NumberFormatException e) {
+                speed = 0;
+            }
+
+            // Crear enemigo en la sala específica
+            GameRoom room = server.getRoomById(roomId);
+            if (room != null) {
+                room.createEnemy("BLUE", vine, speed);
+                
+                String msg = MessageProtocol.encode("CCA_CREATED",
+                    String.valueOf(vine),
+                    "0",
+                    "0");
+                
+                server.broadcastToRoom(roomId, msg);
+                
+                System.out.println("[SERVER] ✓ Cocodrilo AZUL creado en Sala " + roomId + 
+                    ", liana " + vine + (speed > 0 ? ", velocidad " + speed : ""));
+            }
+            
+        } else if (lower.equals("ccr")) {
+            System.out.print("Ingrese número de sala (1-" + server.gameRooms.size() + "): ");
+            String roomStr = scanner.nextLine().trim();
+            
+            int roomId;
+            try {
+                roomId = Integer.parseInt(roomStr);
+                GameRoom room = server.getRoomById(roomId);
+                if (room == null) {
+                    System.out.println("[SERVER] ERROR: Sala " + roomId + " no existe");
+                    continue;
+                }
+            } catch (NumberFormatException e) {
+                System.out.println("[SERVER] ERROR: Número de sala inválido");
+                continue;
+            }
+            
+            System.out.print("Ingrese la liana para el cocodrilo rojo (1-9): ");
+            String inputVine = scanner.nextLine().trim();
+
+            int vine;
+            try {
+                vine = Integer.parseInt(inputVine);
+                if (vine < 1 || vine > 9) {
+                    System.out.println("[SERVER] ERROR: Liana debe estar entre 1 y 9");
+                    continue;
+                }
+            } catch (NumberFormatException e) {
+                System.out.println("[SERVER] ERROR: Debe ingresar un número válido");
+                continue;
+            }
+
+            System.out.print("Ingrese velocidad (0.5-3.0, 0 para predeterminado): ");
+            String inputSpeed = scanner.nextLine().trim();
+            
+            float speed = 0; // 0 significa usar velocidad por defecto según nivel
+            try {
+                speed = Float.parseFloat(inputSpeed);
+                if (speed < 0) speed = 0;
+            } catch (NumberFormatException e) {
+                speed = 0;
+            }
+
+            // Crear enemigo en la sala específica
+            GameRoom room = server.getRoomById(roomId);
+            if (room != null) {
+                room.createEnemy("RED", vine, speed);
+                
+                String msg = MessageProtocol.encode("CCR_CREATED",
+                    String.valueOf(vine),
+                    "0",
+                    "0");
+                
+                server.broadcastToRoom(roomId, msg);
+                
+                System.out.println("[SERVER] ✓ Cocodrilo ROJO creado en Sala " + roomId + 
+                    ", liana " + vine + (speed > 0 ? ", velocidad " + speed : ""));
+            }
+            
+        } else if (lower.equals("df")) {
+            System.out.print("Ingrese número de sala (1-" + server.gameRooms.size() + "): ");
+            String roomStr = scanner.nextLine().trim();
+            
+            int roomId;
+            try {
+                roomId = Integer.parseInt(roomStr);
+                GameRoom room = server.getRoomById(roomId);
+                if (room == null) {
+                    System.out.println("[SERVER] ERROR: Sala " + roomId + " no existe");
+                    continue;
+                }
+            } catch (NumberFormatException e) {
+                System.out.println("[SERVER] ERROR: Número de sala inválido");
+                continue;
+            }
+            
+            // Interactive delete by id
+            System.out.print("Ingrese ID de fruta a eliminar: ");
+            String idStr = scanner.nextLine().trim();
+            try {
+                int fid = Integer.parseInt(idStr);
+                GameRoom room = server.getRoomById(roomId);
+                if (room != null) {
+                    int[] info = room.fruitMap.remove(fid);
+                    if (info != null) {
+                        int vine = info[0];
+                        int height = info[1];
+                        int points = info[2];
+                        boolean deleted = room.deleteFruit(fid);
+                        
+                        if (deleted) {
+                            String msg = MessageProtocol.encode("FRUIT_DELETED", 
+                                String.valueOf(fid), "0", String.valueOf(points));
+                            server.broadcastToRoom(roomId, msg);
+                            System.out.println("[SERVER] ✓ Fruta id=" + fid + " eliminada de Sala " + roomId);
+                        } else {
+                            System.out.println("[SERVER] ERROR: No se pudo eliminar fruta en GameLogic.");
+                        }
+                    } else {
+                        System.out.println("[SERVER] ERROR: No existe fruta con id=" + fid + " en Sala " + roomId);
+                    }
+                }
+            } catch (NumberFormatException e) {
+                System.out.println("[SERVER] ERROR: ID inválido");
+            }
+            
+        } else if (lower.startsWith("deletef ")) {
+            String[] parts = line.split("\\s+");
+            if (parts.length >= 3) {
+                try {
+                    int roomId = Integer.parseInt(parts[1]);
+                    int fid = Integer.parseInt(parts[2]);
+                    
+                    GameRoom room = server.getRoomById(roomId);
+                    if (room == null) {
+                        System.out.println("[SERVER] ERROR: Sala " + roomId + " no existe");
+                        continue;
+                    }
+                    
+                    int[] info = room.fruitMap.remove(fid);
+                    if (info != null) {
+                        int vine = info[0];
+                        int height = info[1];
+                        int points = info[2];
+                        boolean deleted = room.deleteFruit(fid);
+                        
+                        if (deleted) {
+                            String msg = MessageProtocol.encode("FRUIT_DELETED", 
+                                String.valueOf(fid), "0", String.valueOf(points));
+                            server.broadcastToRoom(roomId, msg);
+                            System.out.println("[SERVER] ✓ Fruta id=" + fid + " eliminada de Sala " + roomId);
+                        } else {
+                            System.out.println("[SERVER] ERROR: No se pudo eliminar fruta en GameLogic.");
+                        }
+                    } else {
+                        System.out.println("[SERVER] ERROR: No existe fruta con id=" + fid + " en Sala " + roomId);
+                    }
+                } catch (NumberFormatException e) {
+                    System.out.println("[SERVER] ERROR: Formato: deletef <sala> <id>");
+                }
+            } else {
+                System.out.println("[SERVER] Uso: deletef <sala> <id>");
+            }
+            
+        } else {
+            System.out.println("[SERVER] Comando desconocido: " + line);
+            System.out.println("Comandos disponibles: stats, rooms, cf, cca, ccr, df, deletef <sala> <id>, level <sala> <nivel>, quit");
         }
+    }
+}
         
         System.out.println("\n[SERVER] Deteniendo servidor...");
         server.stop();

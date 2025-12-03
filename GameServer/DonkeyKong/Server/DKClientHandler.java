@@ -25,6 +25,7 @@ public class DKClientHandler extends ClientHandler {
     private String playerName;
     private int lives;
     private int score;
+    private Integer gameRoomId;
     
     public DKClientHandler(Socket socket, GameServer server) throws IOException {
         super(socket, server);
@@ -32,6 +33,7 @@ public class DKClientHandler extends ClientHandler {
         this.playerId = null;
         this.lives = 3;
         this.score = 0;
+        this.gameRoomId = null;
     }
     
     // Getters y Setters
@@ -99,10 +101,26 @@ public class DKClientHandler extends ClientHandler {
     public boolean isAlive() {
         return lives > 0;
     }
+
+    public Integer getGameRoomId() {
+    return gameRoomId;
+    }
+
+    public void setGameRoomId(Integer roomId) {
+    this.gameRoomId = roomId;
+    }
+
+    /**
+    * Verifica si este cliente está en la misma sala que otro
+    */
+    public boolean isInSameRoom(DKClientHandler other) {
+        return this.gameRoomId != null && 
+            this.gameRoomId.equals(other.gameRoomId);
+    }
     
     @Override
     public String toString() {
-        return String.format("DKClient[id=%s, type=%s, playerId=%s, name=%s, lives=%d, score=%d]",
-            clientId, clientType, playerId, playerName, lives, score);
+    return String.format("DKClient[id=%s, type=%s, playerId=%s, roomId=%s, name=%s, lives=%d, score=%d]",
+        clientId, clientType, playerId, gameRoomId, playerName, lives, score);
     }
 }
