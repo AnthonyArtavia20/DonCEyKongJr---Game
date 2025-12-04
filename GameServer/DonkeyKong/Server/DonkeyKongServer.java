@@ -58,13 +58,31 @@ public class DonkeyKongServer extends GameServer {
         }
         
         // Eliminar fruta de esta sala
-        public boolean deleteFruit(int fruitId) {
-            int[] info = fruitMap.remove(fruitId);
-            if (info != null && gameLogic != null) {
-                return gameLogic.deleteFruit(info[0], info[1]);
-            }
-            return false;
+        public int[] deleteFruit(int fruitId) {
+    int[] info = fruitMap.remove(fruitId);
+    
+    if (info != null && gameLogic != null) {
+        int vine = info[0];
+        int height = info[1];
+        boolean result = gameLogic.deleteFruit(vine, height);
+        
+        System.out.println("[DEBUG GameRoom] deleteFruit: id=" + fruitId + 
+            ", vine=" + vine + ", height=" + height + 
+            ", result=" + result + ", gameLogic=" + (gameLogic != null));
+        
+        if (result) {
+            return info; // Retornar info si se eliminó correctamente
+        } else {
+            // Si falló en GameLogic, restaurar en el map
+            fruitMap.put(fruitId, info);
+            return null;
         }
+    } else {
+        System.out.println("[DEBUG GameRoom] deleteFruit: id=" + fruitId + 
+            " not found in fruitMap or gameLogic is null");
+        return null;
+    }
+}
         
         // Crear enemigo en esta sala
         public void createEnemy(String type, int vine, float speed) {
@@ -332,53 +350,47 @@ public class DonkeyKongServer extends GameServer {
             }
                 
             case "HIT": {
-                if (!m.hasParams(2)) {
-                    sendTo(client, MessageProtocol.encode("ERROR", "INVALID_PARAMS"));
-                    break;
-                }
-                
-                int fruitId = m.getParamAsInt(0, -1);
-                int pId = m.getParamAsInt(1, -1);
-                Integer roomId = dkClient.getGameRoomId();
-                
-                if (roomId == null || fruitId < 0) {
-                    sendTo(client, MessageProtocol.encode("ERROR", "INVALID_STATE"));
-                    break;
-                }
-                
-                GameRoom room = getRoomById(roomId);
-                if (room == null) {
-                    sendTo(client, MessageProtocol.encode("ERROR", "ROOM_NOT_FOUND"));
-                    break;
-                }
-                
-                // Buscar fruta en la sala específica
-                int[] info = room.fruitMap.remove(fruitId);
-                if (info == null) {
-                    sendTo(client, MessageProtocol.encode("ERROR", "FRUIT_NOT_FOUND"));
-                    break;
-                }
-                
-                int vine = info[0];
-                int height = info[1];
-                int points = info[2];
-                
-                boolean deleted = room.gameLogic.deleteFruit(vine, height);
-                
-                if (deleted) {
-                    String delMsg = MessageProtocol.encode("FRUIT_DELETED", 
-                        String.valueOf(fruitId), String.valueOf(pId), String.valueOf(points));
-                    broadcastToRoom(roomId, delMsg);
-                    
-                    if (dkClient.isPlayer()) {
-                        dkClient.addScore(points);
-                        String scoreMsg = MessageProtocol.encode("SCORE_UPDATE", 
-                            String.valueOf(pId), String.valueOf(dkClient.getScore()));
-                        broadcastToRoom(roomId, scoreMsg);
-                    }
-                }
-                break;
-            }
+    if (!m.hasParams(2)) {
+        sendTo(client, MessageProtocol.encode("ERROR", "INVALID_PARAMS"));
+        break;
+    }
+    
+    int fruitId = m.getParamAsInt(0, -1);
+    int pId = m.getParamAsInt(1, -1);
+    Integer roomId = dkClient.getGameRoomId();
+    
+    if (roomId == null || fruitId < 0) {
+        sendTo(client, MessageProtocol.encode("ERROR", "INVALID_STATE"));
+        break;
+    }
+    
+    GameRoom room = getRoomById(roomId);
+    if (room == null) {
+        sendTo(client, MessageProtocol.encode("ERROR", "ROOM_NOT_FOUND"));
+        break;
+    }
+    
+    // Usar el método de la sala en lugar de llamar directamente a gameLogic
+   int[] info = room.deleteFruit(fruitId);
+    if (info != null) {
+    int points = info[2];
+        
+        String delMsg = MessageProtocol.encode("FRUIT_DELETED", 
+            String.valueOf(fruitId), String.valueOf(pId), String.valueOf(points));
+        broadcastToRoom(roomId, delMsg);
+        
+        if (dkClient.isPlayer()) {
+            dkClient.addScore(points);
+            String scoreMsg = MessageProtocol.encode("SCORE_UPDATE", 
+                String.valueOf(pId), String.valueOf(dkClient.getScore()));
+            broadcastToRoom(roomId, scoreMsg);
+        }
+    } else {
+        sendTo(client, MessageProtocol.encode("ERROR", "DELETE_FAILED", 
+            "No se pudo eliminar la fruta del GameLogic"));
+    }
+    break;
+}
                 
             case "ENEMY_HIT": {
                 Integer roomId = dkClient.getGameRoomId();
@@ -657,47 +669,36 @@ public class DonkeyKongServer extends GameServer {
             }
                 
             case "DELETE_FRUIT_BY_ID": {
-                if (!m.hasParams(3)) {
-                    sendTo(client, MessageProtocol.encode("ERROR", "INVALID_PARAMS",
-                        "Formato: ADMIN|DELETE_FRUIT_BY_ID|ROOM_ID|FRUIT_ID"));
-                    return;
-                }
-                
-                int targetRoomId = m.getParamAsInt(1, -1);
-                int fid = m.getParamAsInt(2, -1);
-                
-                GameRoom room = getRoomById(targetRoomId);
-                if (room == null) {
-                    sendTo(client, MessageProtocol.encode("ERROR", "ROOM_NOT_FOUND"));
-                    return;
-                }
-                
-                int[] info = room.fruitMap.get(fid);
-                if (info == null) {
-                    sendTo(client, MessageProtocol.encode("ERROR", "FRUIT_NOT_FOUND"));
-                    return;
-                }
-                
-                int points = info[2];
-                boolean deleted = room.deleteFruit(fid);
-                
-                if (deleted) {
-                    String delMsg = MessageProtocol.encode("FRUIT_DELETED",
-                        String.valueOf(fid), "0", String.valueOf(points));
-                    broadcastToRoom(targetRoomId, delMsg);
-                    sendTo(client, MessageProtocol.encode("OK", "FRUIT_DELETED", String.valueOf(fid)));
-                } else {
-                    sendTo(client, MessageProtocol.encode("ERROR", "DELETE_FAILED"));
-                }
-                break;
-            }
-                
-            default:
-                sendTo(client, MessageProtocol.encode("ERROR", "UNKNOWN_ADMIN_COMMAND", subCommand));
-                break;
-        }
+    if (!m.hasParams(3)) {
+        sendTo(client, MessageProtocol.encode("ERROR", "INVALID_PARAMS",
+            "Formato: ADMIN|DELETE_FRUIT_BY_ID|ROOM_ID|FRUIT_ID"));
+        return;
     }
     
+    int targetRoomId = m.getParamAsInt(1, -1);
+    int fid = m.getParamAsInt(2, -1);
+    
+    GameRoom room = getRoomById(targetRoomId);
+    if (room == null) {
+        sendTo(client, MessageProtocol.encode("ERROR", "ROOM_NOT_FOUND"));
+        return;
+    }
+    
+    int[] info = room.deleteFruit(fid);
+    
+    if (info != null) {
+        int points = info[2];
+        String delMsg = MessageProtocol.encode("FRUIT_DELETED",
+            String.valueOf(fid), "0", String.valueOf(points));
+        broadcastToRoom(targetRoomId, delMsg);
+        sendTo(client, MessageProtocol.encode("OK", "FRUIT_DELETED", String.valueOf(fid)));
+    } else {
+        sendTo(client, MessageProtocol.encode("ERROR", "FRUIT_NOT_FOUND"));
+    }
+    break;
+}
+    }
+}
     @Override
     public void disconnectClient(ClientHandler client) {
         if (client instanceof DKClientHandler) {
@@ -1073,100 +1074,92 @@ public class DonkeyKongServer extends GameServer {
                             ", liana " + vine + (speed > 0 ? ", velocidad " + speed : ""));
                     }
                     
-                } else if (lower.equals("df")) {
-                    System.out.print("Ingrese número de sala (1-" + server.gameRooms.size() + "): ");
-                    String roomStr = scanner.nextLine().trim();
-                    
-                    int roomId;
-                    try {
-                        roomId = Integer.parseInt(roomStr);
-                        GameRoom room = server.getRoomById(roomId);
-                        if (room == null) {
-                            System.out.println("[SERVER] ERROR: Sala " + roomId + " no existe");
-                            continue;
-                        }
-                    } catch (NumberFormatException e) {
-                        System.out.println("[SERVER] ERROR: Número de sala inválido");
-                        continue;
-                    }
-                    
-                    // Interactive delete by id
-                    System.out.print("Ingrese ID de fruta a eliminar: ");
-                    String idStr = scanner.nextLine().trim();
-                    try {
-                        int fid = Integer.parseInt(idStr);
-                        GameRoom room = server.getRoomById(roomId);
-                        if (room != null) {
-                            int[] info = room.fruitMap.remove(fid);
-                            if (info != null) {
-                                int vine = info[0];
-                                int height = info[1];
-                                int points = info[2];
-                                boolean deleted = room.deleteFruit(fid);
-                                
-                                if (deleted) {
-                                    String msg = MessageProtocol.encode("FRUIT_DELETED", 
-                                        String.valueOf(fid), "0", String.valueOf(points));
-                                    server.broadcastToRoom(roomId, msg);
-                                    System.out.println("[SERVER] ✓ Fruta id=" + fid + " eliminada de Sala " + roomId);
-                                } else {
-                                    System.out.println("[SERVER] ERROR: No se pudo eliminar fruta en GameLogic.");
-                                }
-                            } else {
-                                System.out.println("[SERVER] ERROR: No existe fruta con id=" + fid + " en Sala " + roomId);
-                            }
-                        }
-                    } catch (NumberFormatException e) {
-                        System.out.println("[SERVER] ERROR: ID inválido");
-                    }
-                    
-                } else if (lower.startsWith("deletef ")) {
-                    String[] parts = line.split("\\s+");
-                    if (parts.length >= 3) {
-                        try {
-                            int roomId = Integer.parseInt(parts[1]);
-                            int fid = Integer.parseInt(parts[2]);
-                            
-                            GameRoom room = server.getRoomById(roomId);
-                            if (room == null) {
-                                System.out.println("[SERVER] ERROR: Sala " + roomId + " no existe");
-                                continue;
-                            }
-                            
-                            int[] info = room.fruitMap.remove(fid);
-                            if (info != null) {
-                                int vine = info[0];
-                                int height = info[1];
-                                int points = info[2];
-                                boolean deleted = room.deleteFruit(fid);
-                                
-                                if (deleted) {
-                                    String msg = MessageProtocol.encode("FRUIT_DELETED", 
-                                        String.valueOf(fid), "0", String.valueOf(points));
-                                    server.broadcastToRoom(roomId, msg);
-                                    System.out.println("[SERVER] ✓ Fruta id=" + fid + " eliminada de Sala " + roomId);
-                                } else {
-                                    System.out.println("[SERVER] ERROR: No se pudo eliminar fruta en GameLogic.");
-                                }
-                            } else {
-                                System.out.println("[SERVER] ERROR: No existe fruta con id=" + fid + " en Sala " + roomId);
-                            }
-                        } catch (NumberFormatException e) {
-                            System.out.println("[SERVER] ERROR: Formato: deletef <sala> <id>");
-                        }
-                    } else {
-                        System.out.println("[SERVER] Uso: deletef <sala> <id>");
-                    }
-                    
-                } else {
-                    System.out.println("[SERVER] Comando desconocido: " + line);
-                    System.out.println("Comandos disponibles: stats, rooms, cf, cca, ccr, df, deletef <sala> <id>, level <sala> <nivel>, debug, quit");
-                }
+                  } else if (lower.equals("df")) {
+    System.out.print("Ingrese número de sala (1-" + server.gameRooms.size() + "): ");
+    String roomStr = scanner.nextLine().trim();
+    
+    int roomId;
+    try {
+        roomId = Integer.parseInt(roomStr);
+        GameRoom room = server.getRoomById(roomId);
+        if (room == null) {
+            System.out.println("[SERVER] ERROR: Sala " + roomId + " no existe");
+            continue;
+        }
+    } catch (NumberFormatException e) {
+        System.out.println("[SERVER] ERROR: Número de sala inválido");
+        continue;
+    }
+    
+    // Interactive delete by id
+    System.out.print("Ingrese ID de fruta a eliminar: ");
+    String idStr = scanner.nextLine().trim();
+    try {
+        int fid = Integer.parseInt(idStr);
+        GameRoom room = server.getRoomById(roomId);
+        if (room != null) {
+            // ✅ CORREGIDO: Solo llamar a deleteFruit una vez
+            int[] info = room.deleteFruit(fid);
+            
+            if (info != null) {
+                int vine = info[0];
+                int height = info[1];
+                int points = info[2];
+                
+                String msg = MessageProtocol.encode("FRUIT_DELETED", 
+                    String.valueOf(fid), "0", String.valueOf(points));
+                server.broadcastToRoom(roomId, msg);
+                System.out.println("[SERVER] ✓ Fruta id=" + fid + " eliminada de Sala " + roomId);
+            } else {
+                System.out.println("[SERVER] ERROR: No existe fruta con id=" + fid + " en Sala " + roomId);
             }
         }
+    } catch (NumberFormatException e) {
+        System.out.println("[SERVER] ERROR: ID inválido");
+    }
+    
+} else if (lower.startsWith("deletef ")) {
+    String[] parts = line.split("\\s+");
+    if (parts.length >= 3) {
+        try {
+            int roomId = Integer.parseInt(parts[1]);
+            int fid = Integer.parseInt(parts[2]);
+            
+            GameRoom room = server.getRoomById(roomId);
+            if (room == null) {
+                System.out.println("[SERVER] ERROR: Sala " + roomId + " no existe");
+                continue;
+            }
+            
+            // ✅ CORREGIDO: Solo llamar a deleteFruit
+            int[] info = room.deleteFruit(fid);
+            
+            if (info != null) {
+                int vine = info[0];
+                int height = info[1];
+                int points = info[2];
+                
+                String msg = MessageProtocol.encode("FRUIT_DELETED", 
+                    String.valueOf(fid), "0", String.valueOf(points));
+                server.broadcastToRoom(roomId, msg);
+                System.out.println("[SERVER] ✓ Fruta id=" + fid + " eliminada de Sala " + roomId);
+            } else {
+                System.out.println("[SERVER] ERROR: No existe fruta con id=" + fid + " en Sala " + roomId);
+            }
+        } catch (NumberFormatException e) {
+            System.out.println("[SERVER] ERROR: Formato: deletef <sala> <id>");
+        }
+    } else {
+        System.out.println("[SERVER] Uso: deletef <sala> <id>");
+    }
+    
+} else {
+    System.out.println("[SERVER] Comando desconocido: " + line);
+    System.out.println("Comandos disponibles: stats, rooms, cf, cca, ccr, df, deletef <sala> <id>, level <sala> <nivel>, debug, quit");
+}   }
         
         System.out.println("\n[SERVER] Deteniendo servidor...");
         server.stop();
         System.exit(0);
     }
-}
+}}
