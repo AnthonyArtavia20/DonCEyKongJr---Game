@@ -12,7 +12,7 @@ echo ""
 # =====================================================
 # 1. CONFIGURAR PATH CON MSYS2
 # =====================================================
-echo "📋 [1/4] Configurando PATH con MSYS2..."
+echo "-> [1/4] Configurando PATH con MSYS2..."
 export PATH="/c/msys64/mingw64/bin:$PATH"
 
 # Verificar que gcc está disponible
@@ -26,7 +26,7 @@ echo ""
 # =====================================================
 # 2. COMPILAR SERVIDOR JAVA
 # =====================================================
-echo "📋 [2/4] Compilando Servidor Java..."
+echo "-> [2/4] Compilando Servidor Java..."
 cd GameServer
 
 if ! command -v javac &> /dev/null; then
@@ -42,7 +42,7 @@ echo ""
 # =====================================================
 # 3. COMPILAR CLIENTE C
 # =====================================================
-echo "📋 [3/4] Compilando Cliente C con Raylib..."
+echo "-> [3/4] Compilando Cliente C con Raylib..."
 cd InterfaceCDevelpment
 
 make clean > /dev/null 2>&1 || true
@@ -55,7 +55,7 @@ echo ""
 # =====================================================
 # 4. VERIFICACIÓN FINAL
 # =====================================================
-echo "📋 [4/4] Verificando archivos compilados..."
+echo "-> [4/4] Verificando archivos compilados..."
 
 if [ -f "GameServer/bin/GameServer/DonkeyKong/Server/DonkeyKongServer.class" ]; then
     echo "✅ Servidor Java: LISTO"

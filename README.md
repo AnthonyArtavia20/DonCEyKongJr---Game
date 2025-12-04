@@ -4,7 +4,7 @@ Juego multijugador en línea inspirado en Donkey Kong Jr. con servidor Java y cl
 
 ## 📋 Requisitos
 
-- **Java JDK** (para compilar y ejecutar el servidor)
+- **Java JDK 11+** (para compilar y ejecutar el servidor)
 - **MSYS2 con GCC** (para compilar el cliente C)
 - **Raylib** (incluido en MSYS2)
 
@@ -18,7 +18,6 @@ Si no tienes MSYS2 instalado:
 ## 🚀 Inicio Rápido
 
 ### Paso 1: Setup (Una sola vez)
-
 ```bash
 cd "Proyecto 4 desarrollo/DonCEyKongJr---Game"
 bash setup.sh
@@ -31,125 +30,247 @@ Este script:
 - ✅ Copia DLLs necesarias de Raylib
 
 ### Paso 2: Ejecutar Servidor (Terminal 1)
-
 ```bash
 bash run_server.sh
 ```
 
 Verás:
 ```
-╔════════════════════════════════════════════════════════════╗
-║   Iniciando Servidor Java - Don CEy Kong Jr              ║
-╚════════════════════════════════════════════════════════════╝
+=================================
+  DonCEy Kong Jr Server
+  Puerto: 5000
+  Max Jugadores: 2
+  Max Espectadores: 4
+  Nivel inicial: 1
+=================================
 
-Servidor escuchando en puerto: 5000
-Máximo de jugadores: 4
+Comandos disponibles:
+  stats  - Mostrar estadísticas del servidor
+  rooms  - Mostrar salas activas
+  cf     - Crear Fruta en sala específica
+  cca    - Crear Cocodrilo Azul en sala específica
+  ccr    - Crear Cocodrilo Rojo en sala específica
+  quit   - Detener servidor
 ```
 
 ### Paso 3: Ejecutar Cliente (Terminal 2)
-
 ```bash
 bash run_client.sh
 ```
 
-Se abrirá la ventana del juego con:
-- Control: Flechas para mover, ESPACIO para saltar, Z para agarrar lianas
-- Conexión automática al servidor en `localhost:5000`
-- enderizado en tiempo real con Raylib
+Se abrirá la ventana del juego y listo, **¡a jugar!** 🎮
+
+---
 
 ## 📁 Estructura del Proyecto
 
 ```
 DonCEyKongJr---Game/
-├── setup.sh                    # ⭐ Script de configuración inicial
-├── run_server.sh               # ⭐ Ejecutar servidor
-├── run_client.sh               # ⭐ Ejecutar cliente
-├── GameServer/
-│   ├── CoreGenericServer/      # Base del servidor (protocolo genérico)
-│   ├── DonkeyKong/
-│   │   ├── Game/               # Lógica del juego
-│   │   ├── Server/             # Servidor específico DK
-│   │   └── Client/             # Ejecutable del cliente
-│   └── bin/                    # Clases compiladas
-└── InterfaceCDevelpment/
-    ├── Makefile                # Configuración de compilación
-    ├── src/                    # Código fuente C
-    │   ├── main.c
-    │   ├── mapa.c
-    │   └── Socket_client.c
-    ├── include/                # Headers
-    └── obj/                    # Objetos compilados
+├── setup.sh                           # ⭐ Script de configuración inicial
+├── run_server.sh                      # ⭐ Ejecutar servidor
+├── run_client.sh                      # ⭐ Ejecutar cliente
+├── README.md                          # 📖 Este archivo
+│
+├── GameServer/                        # 🎮 Servidor del juego (Java)
+│   ├── bin/                           # Clases compiladas (.class)
+│   │   └── GameServer/
+│   │       ├── CoreGenericServer/     # Framework genérico del servidor
+│   │       └── DonkeyKong/
+│   │           ├── Game/              # Lógica del juego compilada
+│   │           │   ├── factory/       # Patrón Factory (niveles)
+│   │           │   ├── model/         # Modelos (Enemy, Fruit, etc)
+│   │           │   └── Observer/      # Patrón Observer (eventos)
+│   │           └── Server/            # Manejadores de clientes
+│   │
+│   ├── CoreGenericServer/             # 📦 Código fuente del framework
+│   │   ├── ClientHandler.java        # Manejador base de clientes
+│   │   ├── GameServer.java           # Clase base del servidor
+│   │   ├── MessageProtocol.java      # Protocolo de mensajes
+│   │   └── ServerConfig.java         # Configuración del servidor
+│   │
+│   └── DonkeyKong/                    # 🐒 Código fuente específico del juego
+│       ├── Client/                    # (Reservado para cliente Java futuro)
+│       │   └── assets/                # Recursos gráficos
+│       │
+│       ├── Game/                      # 🎯 Lógica del juego
+│       │   ├── factory/               # Patrón Factory para niveles
+│       │   │   ├── EnemyFactory.java          # Interfaz Factory
+│       │   │   ├── Level1EnemyFactory.java    # Factory Nivel 1
+│       │   │   ├── Level2EnemyFactory.java    # Factory Nivel 2
+│       │   │   └── Level3EnemyFactory.java    # Factory Nivel 3
+│       │   │
+│       │   ├── model/                 # Modelos de entidades
+│       │   │   ├── Entity.java                # Clase base
+│       │   │   ├── Enemy.java                 # Enemigo base
+│       │   │   ├── BlueCrocodile.java         # Cocodrilo azul
+│       │   │   ├── RedCrocodile.java          # Cocodrilo rojo
+│       │   │   ├── Fruit.java                 # Fruta coleccionable
+│       │   │   └── Collectible.java           # Objetos coleccionables
+│       │   │
+│       │   ├── Observer/              # Patrón Observer para eventos
+│       │   │   ├── GameObserver.java          # Interfaz Observer
+│       │   │   ├── GameEvent.java             # Eventos del juego
+│       │   │   └── BroadcastManager.java      # Subject (notificador)
+│       │   │
+│       │   └── GameLogic.java         # 🧠 Lógica principal del juego
+│       │
+│       └── Server/                    # 🌐 Servidor específico
+│           ├── DKClientHandler.java   # Manejador de clientes DK
+│           └── DonkeyKongServer.java  # Servidor principal (main)
+│
+└── InterfaceCDevelpment/              # 🎨 Cliente del juego (C/Raylib)
+    ├── .vscode/                       # Configuración de VSCode
+    │   └── settings.json
+    │
+    ├── include/                       # 📄 Headers (.h)
+    │   ├── mapa.h                     # Renderizado del mapa
+    │   ├── Socket_client.h            # Cliente de red
+    │   └── raylib.h                   # Raylib (si no está en system)
+    │
+    ├── obj/                           # Objetos compilados (.o)
+    │   ├── main.o
+    │   ├── mapa.o
+    │   └── Socket_client.o
+    │
+    ├── src/                           # 💻 Código fuente (.c)
+    │   ├── main.c                     # Punto de entrada del cliente
+    │   ├── mapa.c                     # Lógica de renderizado
+    │   └── Socket_client.c            # Comunicación con servidor
+    │
+    ├── Makefile                       # ⚙️ Configuración de compilación
+    ├── client.exe                     # Ejecutable compilado
+    └── *.dll                          # DLLs de Raylib (copiadas por setup.sh)
 ```
 
+---
+
+## 🔌 Protocolo de Comunicación
+
+### Mensajes Cliente → Servidor
+
+| Tipo            | Formato                                    | Ejemplo                                    |
+|-----------------|--------------------------------------------|--------------------------------------------|
+| **Conexión**    | `CONNECT\|<tipo>\|<nombre>[\|<room_id>]`   | `CONNECT\|PLAYER\|Juan`                    |
+| **Espectador**  | `CONNECT\|SPECTATOR\|<nombre>\|<room_id>`  | `CONNECT\|SPECTATOR\|Pedro\|1`             |
+| **Admin**       | `CONNECT\|ADMIN\|<nombre>`                 | `CONNECT\|ADMIN\|Server_Admin`             |
+| **Posición**    | `POS\|<player_id>\|<x>\|<y>`               | `POS\|1\|325.5\|450.0`                     |
+| **Golpe fruta** | `HIT\|<fruit_id>\|<player_id>`             | `HIT\|5\|1`                                |
+| **Enemigo hit** | `ENEMY_HIT\|<player_id>\|<enemy_id>\|<dmg>`| `ENEMY_HIT\|1\|3\|1`                      |
+| **Acción**      | `ACTION\|<player_id>\|<action>\|<param>`   | `ACTION\|1\|LEVEL_UP\|2`                   |
+
+### Mensajes Servidor → Cliente
+
+| Tipo               | Formato                                    | Descripción                    |
+|--------------------|--------------------------------------------|--------------------------------|
+| **OK**             | `OK\|PLAYER_ID\|<id>\|ROOM_ID\|<room>...`  | Confirmación de conexión       |
+| **ERROR**          | `ERROR\|<code>\|<message>`                 | Notificación de error          |
+| **PLAYER_POS**     | `PLAYER_POS\|<room>\|<pid>\|<x>\|<y>`      | Posición de jugador            |
+| **FRUIT_CREATED**  | `FRUIT_CREATED\|<id>\|<vine>\|<h>\|<pts>\|<room>` | Fruta creada            |
+| **FRUIT_DELETED**  | `FRUIT_DELETED\|<id>\|<pid>\|<points>`     | Fruta eliminada                |
+| **CCA_CREATED**    | `CCA_CREATED\|<vine>\|0\|0\|<room>`        | Cocodrilo azul creado          |
+| **CCR_CREATED**    | `CCR_CREATED\|<vine>\|0\|0\|<room>`        | Cocodrilo rojo creado          |
+| **SCORE_UPDATE**   | `SCORE_UPDATE\|<player_id>\|<score>`       | Actualización de puntaje       |
+| **PLAYER_JOINED**  | `PLAYER_JOINED\|<player_id>\|<name>`       | Jugador se unió                |
+| **PLAYER_LEFT**    | `PLAYER_LEFT\|<player_id>`                 | Jugador se desconectó          |
+
+---
+
+## 🎮 Comandos del Servidor (CLI)
+
+Mientras el servidor está ejecutándose, puedes usar estos comandos:
+
+| Comando                  | Descripción                                  |
+|--------------------------|----------------------------------------------|
+| `stats`                  | Muestra estadísticas (jugadores, salas, etc) |
+| `rooms`                  | Lista todas las salas activas                |
+| `cf`                     | Crear fruta (modo interactivo)               |
+| `cca`                    | Crear cocodrilo azul (modo interactivo)      |
+| `ccr`                    | Crear cocodrilo rojo (modo interactivo)      |
+| `df`                     | Eliminar fruta por ID (modo interactivo)     |
+| `deletef <sala> <id>`    | Eliminar fruta por ID (inline)               |
+| `level <sala> <nivel>`   | Cambiar nivel de una sala (1-3)              |
+| `debug`                  | Mostrar información de debug                 |
+| `quit` / `exit` / `stop` | Detener el servidor                          |
+
+### Ejemplo de uso:
+```bash
+# Ver salas activas
+> rooms
+
+╔════════════════════════════════════════════════════════════╗
+║                     SALAS ACTIVAS                           ║
+╠════╦═══════════╦═══════╦═════════╦═══════════╦═════════════╣
+║ Sala║ Jugador   ║ Nivel ║ Enemigos║ Frutas    ║ Espectadores║
+╠════╬═══════════╬═══════╬═════════╬═══════════╬═════════════╣
+║  1 ║ Juan      ║  2    ║  3      ║  5        ║  1          ║
+╚════╩═══════════╩═══════╩═════════╩═══════════╩═════════════╝
+
+# Crear fruta en sala 1
+> cf
+Ingrese número de sala (1-1): 1
+Ingrese la liana para la fruta (1-9): 5
+Ingrese altura en la liana (100-700): 400
+Ingrese puntos de la fruta (50-500): 150
+
+[SERVER] ✓ Fruta creada (id=7) en Sala 1, liana 5, altura 400, puntos 150
+```
+---
+
+## 🎯 Controles del Cliente
+
+| Tecla       | Acción                        |
+|-------------|-------------------------------|
+| **← →**     | Mover izquierda/derecha       |
+| **↑ ↓**     | Subir/bajar en liana          |
+| **ESPACIO** | Saltar                        |
+| **Z**       | Agarrar/soltar liana          |
+| **ESC**     | Salir del juego               |
+---
 ## 🛠️ Comandos Útiles
 
 ### Recompilar todo desde cero
 ```bash
 bash setup.sh
 ```
-
-### Solo recompilar el cliente
-```bash
-cd InterfaceCDevelpment
-bash ../run_client.sh
-```
-
-### Solo recompilar el servidor
-```bash
-cd GameServer
-javac -d bin CoreGenericServer/*.java DonkeyKong/Game/*.java DonkeyKong/Server/*.java
-bash ../run_server.sh
-```
-
 ### Limpiar archivos compilados
 ```bash
+# Limpiar cliente
 cd InterfaceCDevelpment
 make clean
 
+# Limpiar servidor
 cd ../GameServer
-rm -rf bin
+rm -rf bin/*
 ```
 
-## 🔌 Protocolo de Comunicación
+---
 
-El cliente y servidor se comunican mediante mensajes de texto:
+## 🧪 Testing
 
-| Tipo         | Formato                     | Ejemplo                     |
-|--------------|-----------------------------|-----------------------------|
-| **Conexión** | `CONNECT\|PLAYER\|<nombre>` | `CONNECT\|PLAYER\|JugadorC` |
-| **Posición** | `POS\|<id>\|<x>\|<y>`       | `POS\|1\|100\|200`          |
-| **Acción**   | `ACTION\|<id>\|<acción>`    | `ACTION\|1\|JUMP`           |
-| **Salto**    |            -                | `ACTION\|1\|JUMP`           |
-| **Liana**    |            -                | `ACTION\|1\|GRAB_LIANA`     |
-| **Agua**     |            -                | `ACTION\|1\|WATER_RESPAWN`  |
+### Probar conexión múltiple (2 jugadores + 2 espectadores)
 
-## 🎮 Controles del Juego
+**Terminal 1** (Servidor):
+```bash
+bash run_server.sh
+```
 
-| Tecla       | Acción                  |
-|-------------|-------------------------|
-| **← →**     | Mover izquierda/derecha |
-| **↑ ↓**     | Subir/bajar en liana    |
-| **ESPACIO** | Saltar                  |
-| **Z**       | Agarrar/soltar liana    |
-| **ESC**     | Salir del juego         |
+**Terminal 2** (Jugador 1):
+```bash
+bash run_client.sh
+# Ingresa nombre: Juan
+```
 
-## Notas para Colaboradores, gracias:
+**Terminal 3** (Jugador 2):
+```bash
+bash run_client.sh
+# Ingresa nombre: Pedro
+```
 
-- El `setup.sh` debe ejecutarse **antes** de cualquier cambio en el código
-- Las DLLs de Raylib se copian automáticamente en la compilación
-- El cliente corre en modo **offline** si no hay servidor disponible
-- Los logs de debug aparecen en la consola durante ejecución
+**Terminal 4** (Espectador en sala 1):
+```bash
+bash run_client.sh
+# Ingresa tipo: SPECTATOR
+# Ingresa sala: 1
+```
 
-## Troubleshooting importante; Errores comunes.
-
-### Error: `gcc: command not found`
-→ Ejecuta `bash setup.sh` o agrega `C:\msys64\mingw64\bin` al PATH
-
-### Error: `javac: command not found`
-→ Instala Java JDK y agrega al PATH
-
-### Error: `libraylib.dll not found`
-→ Ejecuta `bash setup.sh` nuevamente para copiar DLLs
-
-### Cliente no se conecta al servidor
-→ Asegúrate de ejecutar `bash run_server.sh` en otra terminal primero
+---

@@ -6,6 +6,8 @@ import GameServer.DonkeyKong.Game.Observer.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Lógica central del juego DonCEy Kong Jr
@@ -64,8 +66,8 @@ public class GameLogic {
         this.nextEnemyId = new AtomicInteger(1);
         this.nextFruitId = new AtomicInteger(1);
         
-        // Inicializar el BroadcastManager (Singleton)
-        this.broadcastManager = BroadcastManager.getInstance();
+        // Crear BroadcastManager ÚNICO para esta sala (no compartido)
+        this.broadcastManager = new BroadcastManager(true);
         
         System.out.println("[GameLogic] Inicializado - Nivel 1, Factory: Level1EnemyFactory");
     }
@@ -89,6 +91,10 @@ public class GameLogic {
     }
     
     // ===== SERIALIZACIÓN PARA ENVIAR A CLIENTES =====
+    /**
+     * Retorna un formato string con toda la información de enemigos y frutas
+     * Este método es usado para obtener lista de mensajes a enviar a espectadores
+     */
     public String serialize() {
         StringBuilder sb = new StringBuilder();
         
@@ -120,6 +126,40 @@ public class GameLogic {
         }
         
         return sb.toString();
+    }
+    
+    /**
+     * Retorna lista de mensajes de creación para espectadores recién conectados
+     * Formato: Lista de mensajes tipo "CCA_CREATED|vine|height|points|roomId" y "FRUIT_CREATED|id|vine|height|points|roomId"
+     */
+    public List<String> getInitialStateMessages(int roomId) {
+        List<String> messages = new ArrayList<>();
+        
+        // Enviar todos los enemigos activos
+        for (Enemy e : enemies) {
+            if (e.isActive()) {
+                if (e instanceof BlueCrocodile) {
+                    BlueCrocodile bc = (BlueCrocodile) e;
+                    String msg = String.format("CCA_CREATED|%d|0|0|%d", bc.getVineId(), roomId);
+                    messages.add(msg);
+                } else if (e instanceof RedCrocodile) {
+                    RedCrocodile rc = (RedCrocodile) e;
+                    String msg = String.format("CCR_CREATED|%d|0|0|%d", rc.getVineId(), roomId);
+                    messages.add(msg);
+                }
+            }
+        }
+        
+        // Enviar todas las frutas activas
+        for (Fruit f : fruits) {
+            if (f.isActive()) {
+                String msg = String.format("FRUIT_CREATED|%d|%d|%.0f|%d|%d", 
+                    f.getId(), f.getVineId(), f.getY(), f.getPoints(), roomId);
+                messages.add(msg);
+            }
+        }
+        
+        return messages;
     }
     
     // ===== GESTIÓN DE JUGADORES =====

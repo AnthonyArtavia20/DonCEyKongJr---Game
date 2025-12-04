@@ -12,13 +12,13 @@ cd GameServer/DonkeyKong/Client
 
 if [ ! -f "DonCEyKongJrClient.exe" ]; then
     echo "❌ ERROR: Ejecutable no encontrado"
-    echo "Ejecuta primero: bash setup.sh"
     exit 1
 fi
 
 echo "🎮 Lanzando cliente..."
 echo ""
 
-./DonCEyKongJrClient.exe
+# Pasar todos los argumentos al ejecutable
+./DonCEyKongJrClient.exe "$@"
 
 cd ../../../

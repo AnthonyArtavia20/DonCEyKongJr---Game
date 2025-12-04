@@ -6,6 +6,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <math.h>
 #include "fruta.h"
 
 #define ANCHO_PANTALLA 1200
@@ -22,9 +23,11 @@ GestorFrutas gestorFrutas;
 // ✅ NUEVO: Variables para espectador
 static int watchedPlayerId = 1;      // Por defecto observa al jugador 1
 static bool showAllPlayers = false;  // false = solo uno, true = todos
+static int targetRoomId = 1;         // Sala que estamos observando (para espectadores)
 
 typedef struct {
     int id;
+    int roomId;
     Vector2 pos;
     int activo;
     char nombre[32];
@@ -38,6 +41,7 @@ static void InicializarRemotePlayers(void) {
         remotePlayers[i].pos = (Vector2){0,0};
         remotePlayers[i].activo = 0;
         remotePlayers[i].nombre[0] = '\0';
+        remotePlayers[i].roomId = -1;
     }
 }
 
@@ -56,17 +60,38 @@ static int AllocRemoteSlot(void) {
     return -1;
 }
 
-static void UpsertRemotePlayer(int id, float x, float y, const char* name) {
+static bool EsParaMiSala(const char* mensaje, int miSalaId, int miJugadorId, bool esEspectador) {
+    // Si el mensaje contiene información de sala, verificar
+    char* ptr = strstr(mensaje, "|");
+    if (!ptr) return true; // Si no tiene formato de sala, aceptar por compatibilidad
+    
+    // Para mensajes PLAYER_POS
+    if (strncmp(mensaje, "PLAYER_POS|", 11) == 0) {
+        int roomId, pid;
+        if (sscanf(mensaje, "PLAYER_POS|%d|%d", &roomId, &pid) == 2) {
+            return (roomId == miSalaId);
+        }
+    }
+    
+    // Para frutas y enemigos, todos los mensajes deberían ser filtrados por el servidor
+    // pero por si acaso, agregar lógica aquí
+    
+    return true;
+}
+
+static void UpsertRemotePlayer(int id, int roomId, float x, float y, const char* name) {
     int idx = FindRemoteIndexById(id);
     if (idx >= 0) {
         remotePlayers[idx].pos.x = x;
         remotePlayers[idx].pos.y = y;
+        remotePlayers[idx].roomId = roomId; 
         if (name && name[0] != '\0') strncpy(remotePlayers[idx].nombre, name, sizeof(remotePlayers[idx].nombre)-1);
         return;
     }
     int slot = AllocRemoteSlot();
     if (slot < 0) return;
     remotePlayers[slot].id = id;
+    remotePlayers[slot].roomId = roomId; 
     remotePlayers[slot].pos.x = x;
     remotePlayers[slot].pos.y = y;
     remotePlayers[slot].activo = 1;
@@ -80,6 +105,7 @@ static void RemoveRemotePlayer(int id) {
         remotePlayers[idx].activo = 0;
         remotePlayers[idx].id = -1;
         remotePlayers[idx].nombre[0] = '\0';
+        remotePlayers[idx].roomId = -1;
     }
 }
 
@@ -124,6 +150,7 @@ int main(int argc, char** argv) {
     const char* serverHost = "localhost";
     int serverPort = 5000;
     watchedPlayerId = 1; // Por defecto observa jugador 1
+    targetRoomId = 1; // Por defecto observa sala 1
 
     if (argc >= 2) {
         for (int i = 1; i < argc; i++) {
@@ -155,6 +182,13 @@ int main(int argc, char** argv) {
                     i++;
                 }
             }
+            else if (strcmp(argv[i], "--room") == 0) {
+                if (i + 1 < argc) {
+                    targetRoomId = atoi(argv[i+1]);
+                    if (targetRoomId < 1) targetRoomId = 1;
+                    i++;
+                }
+            }
         }
     }
 
@@ -167,7 +201,7 @@ int main(int argc, char** argv) {
     printf("Conectando a servidor %s:%d\n", serverHost, serverPort);
     printf("Modo: %s\n", observerMode ? "ESPECTADOR" : "JUGADOR");
     if (observerMode) {
-        printf("Observando jugador: %d\n", watchedPlayerId);
+        printf("Observando jugador: %d (Sala: %d)\n", watchedPlayerId, targetRoomId);
     }
 
     // Inicializar lista de remotos
@@ -183,9 +217,9 @@ int main(int argc, char** argv) {
         conectado = true;
         if (observerMode) {
             char buf[256];
-            snprintf(buf, sizeof(buf), "CONNECT|SPECTATOR|%s", clientName);
+            snprintf(buf, sizeof(buf), "CONNECT|SPECTATOR|%s|%d", clientName, targetRoomId);
             enviar_mensaje(buf);
-            printf("Conectado como SPECTATOR: %s\n", clientName);
+            printf("Conectado como SPECTATOR: %s (Sala: %d)\n", clientName, targetRoomId);
         } else {
             char buf[256];
             snprintf(buf, sizeof(buf), "CONNECT|PLAYER|%s", clientName);
@@ -243,6 +277,17 @@ int main(int argc, char** argv) {
     const float gravedad = 0.5f;
     const float fuerzaSalto = -12.0f;
     
+    // Invencibilidad temporal tras respawn
+    bool invencible = true;
+    float tiempoInvencibilidad = 0.0f;
+    const float DURACION_INVENCIBILIDAD = 2.0f; // 2 segundos de invencibilidad
+    
+    // Optimización: enviar POS solo cada 100ms (10 veces por segundo, no 60)
+    Vector2 lastSentPos = {50, 100};
+    float timeSinceLastPosSent = 0.0f;
+    const float POS_SEND_INTERVAL = 0.1f; // 100ms
+    const float POS_CHANGE_THRESHOLD = 5.0f; // 5 píxeles de cambio para enviar
+    
     char buffer_recepcion[4096];
     bool movimientoEnviado = false;
 
@@ -252,17 +297,28 @@ int main(int argc, char** argv) {
     while (!WindowShouldClose()) {
         // ===== RECIBIR MENSAJES DEL SERVIDOR =====
         if (conectado && esta_conectado()) {
-            int bytes = recibir_mensaje(buffer_recepcion, sizeof(buffer_recepcion)-1);
-            if (bytes > 0) {
-                if (bytes < (int)sizeof(buffer_recepcion)) buffer_recepcion[bytes] = '\0';
-                else buffer_recepcion[sizeof(buffer_recepcion)-1] = '\0';
+    int bytes = recibir_mensaje(buffer_recepcion, sizeof(buffer_recepcion)-1);
+    if (bytes > 0) {
+        if (bytes < (int)sizeof(buffer_recepcion)) buffer_recepcion[bytes] = '\0';
+        else buffer_recepcion[sizeof(buffer_recepcion)-1] = '\0';
+
+        // printf("[Socket] Recibido: %s\n", buffer_recepcion); // Comentado para reducir lag
+
+        if (!EsParaMiSala(buffer_recepcion, targetRoomId, playerId, observerMode)) {
+            // printf("[DEBUG] Mensaje ignorado (no es para sala %d): %s\n", targetRoomId, buffer_recepcion); // Comentado
+            continue;
+        }
+        
+        // printf("[DEBUG Sala %d] Mensaje recibido: %s\n", targetRoomId, buffer_recepcion); // Comentado
 
                 // OK con PLAYER_ID
                 if (strncmp(buffer_recepcion, "OK|PLAYER_ID|", 13) == 0) {
                     int id = -1;
-                    if (sscanf(buffer_recepcion, "OK|PLAYER_ID|%d", &id) == 1) {
+                    int roomId = -1;
+                    if (sscanf(buffer_recepcion, "OK|PLAYER_ID|%d|ROOM_ID|%d", &id, &roomId) >= 1) {
                         playerId = id;
-                        printf("[Servidor] Asignado PLAYER_ID = %d\n", playerId);
+                        targetRoomId = roomId;
+                        printf("[Servidor] Asignado PLAYER_ID = %d, ROOM_ID = %d\n", playerId, targetRoomId);
                         const char* scorePtr = strstr(buffer_recepcion, "SCORE|");
                         if (scorePtr) {
                             int score = 0;
@@ -272,32 +328,49 @@ int main(int argc, char** argv) {
                     }
                 }
 
-                // PLAYER_POS|<playerId>|<x>|<y>
+                // PLAYER_POS|<roomId>|<playerId>|<x>|<y>
                 if (strncmp(buffer_recepcion, "PLAYER_POS|", 11) == 0) {
-                    int pid;
-                    float px, py;
-                    if (sscanf(buffer_recepcion, "PLAYER_POS|%d|%f|%f", &pid, &px, &py) == 3) {
-                        // ✅ FILTRAR: No agregar tu propio ID a la lista de remotos
-                        if (pid != playerId) {
-                            UpsertRemotePlayer(pid, px, py, NULL);
-                        }
-                        // Si eres espectador, SÍ agregar todos
-                        else if (observerMode) {
-                            UpsertRemotePlayer(pid, px, py, NULL);
-                        }
-                    }
-                }
+    int roomId, pid;
+    float px, py;
+    if (sscanf(buffer_recepcion, "PLAYER_POS|%d|%d|%f|%f", 
+               &roomId, &pid, &px, &py) == 4) {
+        
+        // Solo procesar si es de nuestra sala
+        if (roomId == targetRoomId) {
+            UpsertRemotePlayer(pid, roomId, px, py, NULL);
+            
+            // Para espectadores: si no tenemos jugador para observar, usar el primero que se mueva
+            if (observerMode && watchedPlayerId <= 0) {
+                watchedPlayerId = pid;
+                printf("[Espectador] Auto-seleccionando Jugador %d (primer movimiento en Sala %d)\n", 
+                       watchedPlayerId, targetRoomId);
+            }
+        }
+    }
+}
 
                 // PLAYER_JOINED|<playerId>|<name>
                 if (strncmp(buffer_recepcion, "PLAYER_JOINED|", 14) == 0) {
-                    int pid;
-                    char namebuf[64];
-                    if (sscanf(buffer_recepcion, "PLAYER_JOINED|%d|%63[^\n]", &pid, namebuf) == 2) {
-                        if (pid != playerId || observerMode) {
-                            UpsertRemotePlayer(pid, 50.0f, 100.0f, namebuf);
-                        }
-                    }
-                }
+    int pid;
+    char namebuf[64];
+    if (sscanf(buffer_recepcion, "PLAYER_JOINED|%d|%63[^\n]", &pid, namebuf) == 2) {
+        if (observerMode) {
+    printf("[Espectador] Conectado a Sala %d\n", targetRoomId);
+    printf("[Espectador] Buscando jugadores en esta sala...\n");
+    
+    // Enviar mensaje para solicitar jugadores existentes
+    if (conectado && esta_conectado()) {
+        char queryMsg[50];
+        snprintf(queryMsg, sizeof(queryMsg), "QUERY|PLAYERS|%d", targetRoomId);
+        enviar_mensaje(queryMsg);
+    }
+    
+    // Auto-detectar jugador después de un tiempo
+    watchedPlayerId = targetRoomId; // Asumir que el jugador tiene mismo ID que sala
+    printf("[Espectador] Intentando observar Jugador ID %d (asumido)\n", watchedPlayerId);
+}
+    }
+}
 
                 // PLAYER_LEFT|<playerId>
                 if (strncmp(buffer_recepcion, "PLAYER_LEFT|", 12) == 0) {
@@ -308,14 +381,33 @@ int main(int argc, char** argv) {
                 }
 
                 // FRUIT_CREATED|<id>|<vine>|<height>|<points>
-                if (strncmp(buffer_recepcion, "FRUIT_CREATED|", 14) == 0) {
-                    int fid, vine, height, points;
-                    if (sscanf(buffer_recepcion, "FRUIT_CREATED|%d|%d|%d|%d",
-                            &fid, &vine, &height, &points) == 4) {
-                        CrearFruta(&gestorFrutas, fid, vine, (float)height, points);
-                        printf("[Servidor] FRUIT_CREATED id=%d vine=%d y=%d pts=%d\n", fid, vine, height, points);
-                    }
-                }
+               if (strncmp(buffer_recepcion, "FRUIT_CREATED|", 14) == 0) {
+    int fid, vine, height, points, roomId = targetRoomId; // Default a nuestra sala
+    
+    // Intentar con 5 parámetros (con roomId)
+    if (sscanf(buffer_recepcion, "FRUIT_CREATED|%d|%d|%d|%d|%d",
+            &fid, &vine, &height, &points, &roomId) == 5) {
+        // OK, tenemos roomId
+    } 
+    // Intentar con 4 parámetros (sin roomId - compatibilidad)
+    else if (sscanf(buffer_recepcion, "FRUIT_CREATED|%d|%d|%d|%d",
+            &fid, &vine, &height, &points) == 4) {
+        // Usar targetRoomId por defecto
+        roomId = targetRoomId;
+    } else {
+        printf("[ERROR] Formato FRUIT_CREATED inválido: %s\n", buffer_recepcion);
+        continue;
+    }
+    
+    // Solo crear si es para nuestra sala
+    if (roomId == targetRoomId) {
+        printf("[CLIENT Sala %d] Creando fruta id=%d vine=%d y=%d pts=%d\n", 
+               targetRoomId, fid, vine, height, points);
+        CrearFruta(&gestorFrutas, fid, vine, (float)height, points);
+    } else {
+        printf("[CLIENT Sala %d] Ignorando fruta para sala %d\n", targetRoomId, roomId);
+    }
+}
 
                 // FRUIT_DELETED|<id>|<playerId>|<points>
                 if (strncmp(buffer_recepcion, "FRUIT_DELETED|", 14) == 0) {
@@ -339,25 +431,55 @@ int main(int argc, char** argv) {
 
                 // CCA_CREATED (enemigos)
                 if (strncmp(buffer_recepcion, "CCA_CREATED", 11) == 0) {
-                    int vine, height, points;
-                    int nuevoID = gestorEnemigos.proximo_id;
-                    if (sscanf(buffer_recepcion, "CCA_CREATED|%d|%d|%d",
-                            &vine, &height, &points) == 3) {
-                        CrearEnemigoEnLiana(&gestorEnemigos, nuevoID, COCODRILO_AZUL, vine);
-                        gestorEnemigos.proximo_id++;
-                    }
-                }
+    int vine, height, points, roomId = targetRoomId;
+    int nuevoID = gestorEnemigos.proximo_id;
+    
+    // Intentar con 4 parámetros (con roomId)
+    if (sscanf(buffer_recepcion, "CCA_CREATED|%d|%d|%d|%d",
+            &vine, &height, &points, &roomId) == 4) {
+        // OK
+    }
+    // Intentar con 3 parámetros (sin roomId - compatibilidad)
+    else if (sscanf(buffer_recepcion, "CCA_CREATED|%d|%d|%d",
+            &vine, &height, &points) == 3) {
+        roomId = targetRoomId;
+    } else {
+        printf("[ERROR] Formato CCA_CREATED inválido: %s\n", buffer_recepcion);
+        continue;
+    }
+    
+    if (roomId == targetRoomId) {
+        printf("[CLIENT Sala %d] Cocodrilo AZUL creado vine=%d\n", targetRoomId, vine);
+        CrearEnemigoEnLiana(&gestorEnemigos, nuevoID, COCODRILO_AZUL, vine);
+        gestorEnemigos.proximo_id++;
+    }
+}
 
                 // CCR_CREATED (enemigos)
                 if (strncmp(buffer_recepcion, "CCR_CREATED", 11) == 0) {
-                    int vine, height, points;
-                    int nuevoID = gestorEnemigos.proximo_id;
-                    if (sscanf(buffer_recepcion, "CCR_CREATED|%d|%d|%d",
-                            &vine, &height, &points) == 3) {
-                        CrearEnemigoEnLiana(&gestorEnemigos, nuevoID, COCODRILO_ROJO, vine);
-                        gestorEnemigos.proximo_id++;
-                    }
-                }
+    int vine, height, points, roomId = targetRoomId;
+    int nuevoID = gestorEnemigos.proximo_id;
+    
+    // Intentar con 4 parámetros (con roomId)
+    if (sscanf(buffer_recepcion, "CCR_CREATED|%d|%d|%d|%d",
+            &vine, &height, &points, &roomId) == 4) {
+        // OK
+    }
+    // Intentar con 3 parámetros (sin roomId - compatibilidad)
+    else if (sscanf(buffer_recepcion, "CCR_CREATED|%d|%d|%d",
+            &vine, &height, &points) == 3) {
+        roomId = targetRoomId;
+    } else {
+        printf("[ERROR] Formato CCR_CREATED inválido: %s\n", buffer_recepcion);
+        continue;
+    }
+    
+    if (roomId == targetRoomId) {
+        printf("[CLIENT Sala %d] Cocodrilo ROJO creado vine=%d\n", targetRoomId, vine);
+        CrearEnemigoEnLiana(&gestorEnemigos, nuevoID, COCODRILO_ROJO, vine);
+        gestorEnemigos.proximo_id++;
+    }
+}
             }
         }
         
@@ -376,8 +498,8 @@ int main(int argc, char** argv) {
                     attempts++;
                     
                     int idx = FindRemoteIndexById(watchedPlayerId);
-                    if (idx >= 0) {
-                        printf("[Espectador] Cambiando a observar Jugador %d\n", watchedPlayerId);
+                    if (idx >= 0 && remotePlayers[idx].roomId == targetRoomId) {
+                        printf("[Espectador] Cambiando a observar Jugador %d (Sala %d)\n", watchedPlayerId, targetRoomId);
                         break;
                     }
                     
@@ -385,26 +507,46 @@ int main(int argc, char** argv) {
                 
                 if (attempts >= 3) {
                     watchedPlayerId = originalId;
-                    printf("[Espectador] No hay otros jugadores disponibles\n");
+                    printf("[Espectador] No hay otros jugadores disponibles en Sala %d\n", targetRoomId);
                 }
             }
             
             // Tecla 1: Observar jugador 1
             if (IsKeyPressed(KEY_ONE)) {
-                watchedPlayerId = 1;
-                printf("[Espectador] Observando Jugador 1\n");
+                int idx = FindRemoteIndexById(1);
+                if (idx >= 0 && remotePlayers[idx].roomId == targetRoomId) {
+                    watchedPlayerId = 1;
+                    printf("[Espectador] Observando Jugador 1 (Sala %d)\n", targetRoomId);
+                } else {
+                    printf("[Espectador] Jugador 1 no disponible en Sala %d\n", targetRoomId);
+                }
             }
             
             // Tecla 2: Observar jugador 2
             if (IsKeyPressed(KEY_TWO)) {
-                watchedPlayerId = 2;
-                printf("[Espectador] Observando Jugador 2\n");
+                int idx = FindRemoteIndexById(2);
+                if (idx >= 0 && remotePlayers[idx].roomId == targetRoomId) {
+                    watchedPlayerId = 2;
+                    printf("[Espectador] Observando Jugador 2 (Sala %d)\n", targetRoomId);
+                } else {
+                    printf("[Espectador] Jugador 2 no disponible en Sala %d\n", targetRoomId);
+                }
             }
             
             // Tecla A: Ver TODOS los jugadores (toggle)
             if (IsKeyPressed(KEY_A)) {
                 showAllPlayers = !showAllPlayers;
-                printf("[Espectador] Mostrar todos: %s\n", showAllPlayers ? "SI" : "NO");
+                printf("[Espectador] Mostrar todos en Sala %d: %s\n", targetRoomId, showAllPlayers ? "SI" : "NO");
+            }
+        }
+        
+        // ===== ACTUALIZAR INVENCIBILIDAD =====
+        if (invencible) {
+            tiempoInvencibilidad += GetFrameTime();
+            if (tiempoInvencibilidad >= DURACION_INVENCIBILIDAD) {
+                invencible = false;
+                tiempoInvencibilidad = 0.0f;
+                printf("[Juego] Invencibilidad finalizada\n");
             }
         }
         
@@ -412,25 +554,32 @@ int main(int argc, char** argv) {
         if (!observerMode && juegoActivo && !gameOver) {
             Rectangle jugadorRect = { cuadradoPos.x, cuadradoPos.y, cuadradoSize, cuadradoSize };
 
-            // Colisión con enemigos
-            int enemigoColisionado = VerificarColisionConEnemigos(&gestorEnemigos, cuadradoPos.x, cuadradoPos.y, cuadradoSize, cuadradoSize);
-            if (enemigoColisionado != -1) {
-                salud--;
-                printf("[Juego] ¡Colisión con enemigo! Salud: %d/%d\n", salud, VIDA_MAXIMA);
+            // Colisión con enemigos (SOLO si NO está invencible)
+            if (!invencible) {
+                int enemigoColisionado = VerificarColisionConEnemigos(&gestorEnemigos, cuadradoPos.x, cuadradoPos.y, cuadradoSize, cuadradoSize);
+                if (enemigoColisionado != -1) {
+                    salud--;
+                    printf("[Juego] ¡Colisión con enemigo! Salud: %d/%d\n", salud, VIDA_MAXIMA);
 
-                if (esta_conectado() && playerId > 0) {
-                    char msg[128];
-                    snprintf(msg, sizeof(msg), "ENEMY_HIT|%d|%d|%d", playerId, enemigoColisionado, 1);
-                    enviar_mensaje(msg);
-                }
+                    if (esta_conectado() && playerId > 0) {
+                        char msg[128];
+                        snprintf(msg, sizeof(msg), "ENEMY_HIT|%d|%d|%d", playerId, enemigoColisionado, 1);
+                        enviar_mensaje(msg);
+                    }
 
-                cuadradoPos = (Vector2){50, 100};
-                velocidadY = 0;
-                sujetandoLiana = false;
-                
-                if (salud <= 0) {
-                    gameOver = true;
-                    printf("[Juego] ¡GAME OVER!\n");
+                    cuadradoPos = (Vector2){50, 100};
+                    velocidadY = 0;
+                    sujetandoLiana = false;
+                    
+                    // Reiniciar invencibilidad tras respawn
+                    invencible = true;
+                    tiempoInvencibilidad = 0.0f;
+                    printf("[Juego] Invencibilidad activada por 2 segundos\n");
+                    
+                    if (salud <= 0) {
+                        gameOver = true;
+                        printf("[Juego] ¡GAME OVER!\n");
+                    }
                 }
             }
             
@@ -566,11 +715,24 @@ int main(int argc, char** argv) {
             cuadradoPos.y += velocidadY;
         }
         
-        // Envío de posición
-        if (!observerMode && conectado && esta_conectado() && movimientoEnviado && playerId > 0) {
-            char posMsg[100];
-            snprintf(posMsg, sizeof(posMsg), "POS|%d|%.1f|%.1f", playerId, cuadradoPos.x, cuadradoPos.y);
-            enviar_mensaje(posMsg);
+        // Envío de posición (OPTIMIZADO: solo cada 100ms o si cambio es significativo)
+        if (!observerMode && conectado && esta_conectado() && playerId > 0) {
+            timeSinceLastPosSent += GetFrameTime();
+            
+            // Calcular distancia desde última posición enviada
+            float dx = cuadradoPos.x - lastSentPos.x;
+            float dy = cuadradoPos.y - lastSentPos.y;
+            float distance = sqrt(dx*dx + dy*dy);
+            
+            // Enviar si: pasó intervalo de tiempo O cambio es significativo
+            if (timeSinceLastPosSent >= POS_SEND_INTERVAL || distance >= POS_CHANGE_THRESHOLD) {
+                char posMsg[100];
+                snprintf(posMsg, sizeof(posMsg), "POS|%d|%.1f|%.1f", playerId, cuadradoPos.x, cuadradoPos.y);
+                enviar_mensaje(posMsg);
+                
+                lastSentPos = cuadradoPos;
+                timeSinceLastPosSent = 0.0f;
+            }
         }
         
         // Comportamiento en agua
@@ -630,9 +792,10 @@ int main(int argc, char** argv) {
                 // ✅ MODO ESPECTADOR
                 
                 if (showAllPlayers) {
-                    // Mostrar TODOS los jugadores
+                    // Mostrar TODOS los jugadores de NUESTRA SALA
                     for (int i = 0; i < MAX_REMOTE_PLAYERS; i++) {
                         if (!remotePlayers[i].activo) continue;
+                        if (remotePlayers[i].roomId != targetRoomId) continue; // Solo de nuestra sala
                         
                         Color playerColor = (remotePlayers[i].id == 1) ? BLUE : 
                                            (remotePlayers[i].id == 2) ? RED : GREEN;
@@ -645,130 +808,148 @@ int main(int argc, char** argv) {
                         const char* label = remotePlayers[i].nombre[0] ? 
                                            remotePlayers[i].nombre :
                                            TextFormat("P%d", remotePlayers[i].id);
-                    DrawText(label, remotePlayers[i].pos.x, remotePlayers[i].pos.y - 16, 
-                            10, YELLOW);
-                }
+                        DrawText(label, remotePlayers[i].pos.x, remotePlayers[i].pos.y - 16, 
+                                10, YELLOW);
+                    }
                 
-                DrawText("ESPECTADOR - MOSTRANDO TODOS", 10, 35, 15, GREEN);
+                    DrawText(TextFormat("ESPECTADOR - SALA %d - MOSTRANDO TODOS", targetRoomId), 10, 35, 15, GREEN);
                 
-            } else {
-                // Mostrar SOLO el jugador seleccionado
-                int targetIdx = FindRemoteIndexById(watchedPlayerId);
-                
-                if (targetIdx >= 0 && remotePlayers[targetIdx].activo) {
-                    Color playerColor = (watchedPlayerId == 1) ? BLUE : 
-                                       (watchedPlayerId == 2) ? RED : GREEN;
-                    
-                    float px = remotePlayers[targetIdx].pos.x;
-                    float py = remotePlayers[targetIdx].pos.y;
-                    
-                    DrawRectangle(px, py, cuadradoSize, cuadradoSize, playerColor);
-                    DrawRectangleLines(px, py, cuadradoSize, cuadradoSize, WHITE);
-                    
-                    const char* label = remotePlayers[targetIdx].nombre[0] ? 
-                                       remotePlayers[targetIdx].nombre : 
-                                       TextFormat("P%d", watchedPlayerId);
-                    DrawText(label, px, py - 16, 10, YELLOW);
-                    
-                    DrawText(TextFormat("OBSERVANDO: Jugador %d", watchedPlayerId), 
-                            10, 35, 15, GREEN);
                 } else {
-                    DrawText(TextFormat("Esperando Jugador %d...", watchedPlayerId), 
-                            ANCHO_PANTALLA/2 - 100, ALTO_PANTALLA/2, 20, YELLOW);
-                    DrawText("MODO ESPECTADOR", 10, 35, 15, ORANGE);
+                    // Mostrar SOLO el jugador seleccionado de NUESTRA SALA
+                    int targetIdx = FindRemoteIndexById(watchedPlayerId);
+                    
+                    if (targetIdx >= 0 && remotePlayers[targetIdx].activo && 
+                        remotePlayers[targetIdx].roomId == targetRoomId) {
+                        
+                        Color playerColor = (watchedPlayerId == 1) ? BLUE : 
+                                           (watchedPlayerId == 2) ? RED : GREEN;
+                        
+                        float px = remotePlayers[targetIdx].pos.x;
+                        float py = remotePlayers[targetIdx].pos.y;
+                        
+                        DrawRectangle(px, py, cuadradoSize, cuadradoSize, playerColor);
+                        DrawRectangleLines(px, py, cuadradoSize, cuadradoSize, WHITE);
+                        
+                        const char* label = remotePlayers[targetIdx].nombre[0] ? 
+                                           remotePlayers[targetIdx].nombre : 
+                                           TextFormat("P%d", watchedPlayerId);
+                        DrawText(label, px, py - 16, 10, YELLOW);
+                        
+                        DrawText(TextFormat("OBSERVANDO: Jugador %d (Sala %d)", 
+                                watchedPlayerId, targetRoomId), 10, 35, 15, GREEN);
+                    } else {
+                        DrawText(TextFormat("Esperando Jugador %d en Sala %d...", 
+                                watchedPlayerId, targetRoomId), 
+                                ANCHO_PANTALLA/2 - 100, ALTO_PANTALLA/2, 20, YELLOW);
+                        DrawText(TextFormat("MODO ESPECTADOR - SALA %d", targetRoomId), 
+                                10, 35, 15, ORANGE);
+                    }
+                }
+            
+            } else {
+                // ✅ MODO JUGADOR
+                
+                // Dibujar jugador LOCAL
+                Color colorCuadrado = BLUE;
+                if (conectado && esta_conectado()) colorCuadrado = GREEN;
+                if (enLiana && !sujetandoLiana) colorCuadrado = ORANGE;
+                if (sujetandoLiana) colorCuadrado = YELLOW;
+                if (enAgua) colorCuadrado = SKYBLUE;
+                
+                // Si está invencible, hacer que parpadee
+                if (invencible && (int)(tiempoInvencibilidad * 10) % 2 == 0) {
+                    colorCuadrado.a = 100; // Semi-transparente cuando parpadea
+                }
+                
+                DrawRectangle(cuadradoPos.x, cuadradoPos.y, cuadradoSize, cuadradoSize, colorCuadrado);
+                DrawRectangleLines(cuadradoPos.x, cuadradoPos.y, cuadradoSize, cuadradoSize, WHITE);
+                DrawText(TextFormat("P%d (TÚ) - Sala %d", playerId, targetRoomId), 
+                        cuadradoPos.x, cuadradoPos.y - 16, 10, LIME);
+                
+                // Mostrar indicador de invencibilidad
+                if (invencible) {
+                    DrawText(TextFormat("INVENCIBLE %.1fs", DURACION_INVENCIBILIDAD - tiempoInvencibilidad), 
+                            cuadradoPos.x, cuadradoPos.y - 32, 10, YELLOW);
+                }
+                
+                // Dibujar OTROS jugadores (remotos) de NUESTRA SALA
+                for (int i = 0; i < MAX_REMOTE_PLAYERS; i++) {
+                    if (!remotePlayers[i].activo) continue;
+                    if (remotePlayers[i].id == playerId) continue;
+                    if (remotePlayers[i].roomId != targetRoomId) continue; // Solo de nuestra sala
+                    
+                    Color remoteColor = (remotePlayers[i].id == 1) ? DARKBLUE : 
+                                       (remotePlayers[i].id == 2) ? DARKPURPLE : DARKGREEN;
+                    
+                    DrawRectangle(remotePlayers[i].pos.x, remotePlayers[i].pos.y, 
+                                 cuadradoSize, cuadradoSize, remoteColor);
+                    DrawRectangleLines(remotePlayers[i].pos.x, remotePlayers[i].pos.y, 
+                                      cuadradoSize, cuadradoSize, ORANGE);
+                    
+                    const char* label = remotePlayers[i].nombre[0] ? 
+                                       remotePlayers[i].nombre : 
+                                       TextFormat("P%d", remotePlayers[i].id);
+                    DrawText(label, remotePlayers[i].pos.x, remotePlayers[i].pos.y - 16, 
+                            10, ORANGE);
                 }
             }
+        
+            // ========== UI ==========
+            DrawText("DON CEY KONG JR - ONLINE", 10, 10, 20, YELLOW);
             
-        } else {
-            // ✅ MODO JUGADOR
-            
-            // Dibujar jugador LOCAL
-            Color colorCuadrado = BLUE;
-            if (conectado && esta_conectado()) colorCuadrado = GREEN;
-            if (enLiana && !sujetandoLiana) colorCuadrado = ORANGE;
-            if (sujetandoLiana) colorCuadrado = YELLOW;
-            if (enAgua) colorCuadrado = SKYBLUE;
-            
-            DrawRectangle(cuadradoPos.x, cuadradoPos.y, cuadradoSize, cuadradoSize, colorCuadrado);
-            DrawRectangleLines(cuadradoPos.x, cuadradoPos.y, cuadradoSize, cuadradoSize, WHITE);
-            DrawText(TextFormat("P%d (TÚ)", playerId), cuadradoPos.x, cuadradoPos.y - 16, 10, LIME);
-            
-            // Dibujar OTROS jugadores (remotos)
-            for (int i = 0; i < MAX_REMOTE_PLAYERS; i++) {
-                if (!remotePlayers[i].activo) continue;
-                if (remotePlayers[i].id == playerId) continue;
-                
-                Color remoteColor = (remotePlayers[i].id == 1) ? DARKBLUE : 
-                                   (remotePlayers[i].id == 2) ? DARKPURPLE : DARKGREEN;
-                
-                DrawRectangle(remotePlayers[i].pos.x, remotePlayers[i].pos.y, 
-                             cuadradoSize, cuadradoSize, remoteColor);
-                DrawRectangleLines(remotePlayers[i].pos.x, remotePlayers[i].pos.y, 
-                                  cuadradoSize, cuadradoSize, ORANGE);
-                
-                const char* label = remotePlayers[i].nombre[0] ? 
-                                   remotePlayers[i].nombre : 
-                                   TextFormat("P%d", remotePlayers[i].id);
-                DrawText(label, remotePlayers[i].pos.x, remotePlayers[i].pos.y - 16, 
-                        10, ORANGE);
+            if (conectado && esta_conectado()) {
+                DrawText(observerMode ? "ESPECTADOR CONECTADO" : "CONECTADO AL SERVIDOR", 10, 35, 15, GREEN);
+            } else {
+                DrawText("MODO OFFLINE", 10, 35, 15, RED);
             }
-        }
+            
+            
+            if (!observerMode) {
+                DrawText(TextFormat("Posicion: (%.1f, %.1f)", cuadradoPos.x, cuadradoPos.y), 10, 55, 15, GREEN);
+                DrawText(TextFormat("En suelo: %s", enSuelo ? "SI" : "NO"), 10, 75, 15, enSuelo ? GREEN : RED);
+                DrawText(TextFormat("Liana disponible: %s", enLiana ? "SI" : "NO"), 10, 95, 15, enLiana ? ORANGE : RED);
+                DrawText(TextFormat("Sujetando liana: %s", sujetandoLiana ? "SI" : "NO"), 10, 115, 15, sujetandoLiana ? GREEN : RED);
+                DrawText(TextFormat("En agua: %s", enAgua ? "SI" : "NO"), 10, 135, 15, enAgua ? BLUE : RED);
+                DrawText(TextFormat("Nivel: %d", nivel), 10, 155, 15, YELLOW);
+                DrawText(TextFormat("Salud: %d/%d", salud, VIDA_MAXIMA), 10, 175, 15, 
+                        (salud == 3) ? GREEN : (salud == 2) ? YELLOW : RED);
+                DrawText(TextFormat("Puntuacion: %d", puntuacion), 10, 195, 18, GOLD);
+            }
+            
+            DrawText(TextFormat("Enemigos: %d/%d", gestorEnemigos.cantidad_enemigos, MAX_ENEMIGOS), 10, 220, 15, PURPLE);
+            
+            if (mostrarMensajeNivel > 0) {
+                DrawText(TextFormat("¡NIVEL %d COMPLETADO!", mostrarMensajeNivel), 
+                        ANCHO_PANTALLA/2 - 150, 50, 30, GREEN);
+            }
+            
+            if (gameOver) {
+                DrawRectangle(0, 0, ANCHO_PANTALLA, ALTO_PANTALLA, (Color){0, 0, 0, 200});
+                DrawText("¡GAME OVER!", ANCHO_PANTALLA/2 - 150, ALTO_PANTALLA/2 - 50, 40, RED);
+                DrawText(TextFormat("Alcanzaste el nivel %d", nivel), ANCHO_PANTALLA/2 - 120, ALTO_PANTALLA/2, 20, WHITE);
+                DrawText("Presiona R para reiniciar", ANCHO_PANTALLA/2 - 100, ALTO_PANTALLA/2 + 50, 20, GREEN);
+            }
+            
+            // Controles
+            if (observerMode) {
+                DrawText("TAB: cambiar jugador | 1/2: seleccionar | A: ver todos | ESC: salir", 
+                        10, ALTO_PANTALLA - 25, 12, YELLOW);
+            } else {
+                DrawText("Flechas: mover | ESPACIO: saltar | Z: liana | ESC: salir", 
+                        10, ALTO_PANTALLA - 25, 12, RED);
+            }
         
-        // ========== UI ==========
-        DrawText("DON CEY KONG JR - ONLINE", 10, 10, 20, YELLOW);
-        
-        if (conectado && esta_conectado()) {
-            DrawText(observerMode ? "ESPECTADOR CONECTADO" : "CONECTADO AL SERVIDOR", 10, 35, 15, GREEN);
-        } else {
-            DrawText("MODO OFFLINE", 10, 35, 15, RED);
-        }
-        
-        if (!observerMode) {
-            DrawText(TextFormat("Posicion: (%.1f, %.1f)", cuadradoPos.x, cuadradoPos.y), 10, 55, 15, GREEN);
-            DrawText(TextFormat("En suelo: %s", enSuelo ? "SI" : "NO"), 10, 75, 15, enSuelo ? GREEN : RED);
-            DrawText(TextFormat("Liana disponible: %s", enLiana ? "SI" : "NO"), 10, 95, 15, enLiana ? ORANGE : RED);
-            DrawText(TextFormat("Sujetando liana: %s", sujetandoLiana ? "SI" : "NO"), 10, 115, 15, sujetandoLiana ? GREEN : RED);
-            DrawText(TextFormat("En agua: %s", enAgua ? "SI" : "NO"), 10, 135, 15, enAgua ? BLUE : RED);
-            DrawText(TextFormat("Nivel: %d", nivel), 10, 155, 15, YELLOW);
-            DrawText(TextFormat("Salud: %d/%d", salud, VIDA_MAXIMA), 10, 175, 15, 
-                    (salud == 3) ? GREEN : (salud == 2) ? YELLOW : RED);
-            DrawText(TextFormat("Puntuacion: %d", puntuacion), 10, 195, 18, GOLD);
-        }
-        
-        DrawText(TextFormat("Enemigos: %d/%d", gestorEnemigos.cantidad_enemigos, MAX_ENEMIGOS), 10, 220, 15, PURPLE);
-        
-        if (mostrarMensajeNivel > 0) {
-            DrawText(TextFormat("¡NIVEL %d COMPLETADO!", mostrarMensajeNivel), 
-                    ANCHO_PANTALLA/2 - 150, 50, 30, GREEN);
-        }
-        
-        if (gameOver) {
-            DrawRectangle(0, 0, ANCHO_PANTALLA, ALTO_PANTALLA, (Color){0, 0, 0, 200});
-            DrawText("¡GAME OVER!", ANCHO_PANTALLA/2 - 150, ALTO_PANTALLA/2 - 50, 40, RED);
-            DrawText(TextFormat("Alcanzaste el nivel %d", nivel), ANCHO_PANTALLA/2 - 120, ALTO_PANTALLA/2, 20, WHITE);
-            DrawText("Presiona R para reiniciar", ANCHO_PANTALLA/2 - 100, ALTO_PANTALLA/2 + 50, 20, GREEN);
-        }
-        
-        // Controles
-        if (observerMode) {
-            DrawText("TAB: cambiar jugador | 1/2: seleccionar | A: ver todos | ESC: salir", 
-                    10, ALTO_PANTALLA - 25, 12, YELLOW);
-        } else {
-            DrawText("Flechas: mover | ESPACIO: saltar | Z: liana | ESC: salir", 
-                    10, ALTO_PANTALLA - 25, 12, RED);
-        }
-        
-    EndDrawing();
-}
+        EndDrawing();
+    }
 
-// Limpieza
-if (conectado) {
-    desconectar_servidor();
-}
-LiberarTexturasEnemigos(&gestorEnemigos);
-LiberarMapa(mapa);
-CloseWindow();
+    // Limpieza
+    if (conectado) {
+        desconectar_servidor();
+    }
+    LiberarTexturasEnemigos(&gestorEnemigos);
+    LiberarMapa(mapa);
+    CloseWindow();
 
-printf("=== JUEGO TERMINADO ===\n");
-return 0;
+    printf("=== JUEGO TERMINADO ===\n");
+    return 0;
 }
