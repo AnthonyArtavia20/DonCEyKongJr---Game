@@ -224,7 +224,7 @@ public class GameLogic {
         enemies.add(croc);
         
         System.out.println("[GameLogic] Cocodrilo ROJO creado - ID: " + id + 
-                          ", Liana: " + vineId + ", Nivel: " + currentLevel);
+                        ", Liana: " + vineId + ", Nivel: " + currentLevel);
         
         // DISPARAR EVENTO: ENEMY_SPAWNED
         GameEvent event = new GameEvent(
@@ -252,7 +252,7 @@ public class GameLogic {
         enemies.add(croc);
         
         System.out.println("[GameLogic] Cocodrilo AZUL creado - ID: " + id + 
-                          ", Liana: " + vineId + ", Nivel: " + currentLevel);
+                        ", Liana: " + vineId + ", Nivel: " + currentLevel);
         
         // DISPARAR EVENTO: ENEMY_SPAWNED
         GameEvent event = new GameEvent(
@@ -278,8 +278,8 @@ public class GameLogic {
         fruits.add(fruit);
         
         System.out.println("[GameLogic] Fruta creada - ID: " + id + 
-                          ", Liana: " + vineId + ", Y: " + height + 
-                          ", Puntos: " + fruit.getPoints());
+                        ", Liana: " + vineId + ", Y: " + height + 
+                        ", Puntos: " + fruit.getPoints());
         
         // DISPARAR EVENTO: FRUIT_SPAWNED
         GameEvent event = new GameEvent(
@@ -330,8 +330,8 @@ public class GameLogic {
         // Restar vida
         player.lives -= damage;
         System.out.println("[GameLogic] Jugador " + player.name + 
-                          " golpeado por enemigo " + enemyId + 
-                          " - Vidas: " + player.lives);
+                        " golpeado por enemigo " + enemyId + 
+                        " - Vidas: " + player.lives);
         
         // DISPARAR EVENTO: COLLISION_DETECTED
         GameEvent collisionEvent = new GameEvent(
@@ -399,7 +399,7 @@ public class GameLogic {
         }
         
         System.out.println("[GameLogic] Nivel cambiado a " + newLevel + 
-                          " - Factory: " + currentFactory.getClass().getSimpleName());
+                        " - Factory: " + currentFactory.getClass().getSimpleName());
         
         // DISPARAR EVENTO: LEVEL_CHANGED
         GameEvent event = new GameEvent(

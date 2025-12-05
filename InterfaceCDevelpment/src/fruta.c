@@ -68,9 +68,9 @@ void DibujarFrutas(GestorFrutas* gestor) {
     for (int i = 0; i < MAX_FRUTAS; i++) {
         if (gestor->frutas[i].activo) {
             DrawCircle(gestor->frutas[i].posicion.x + 10,
-                       gestor->frutas[i].posicion.y + 10,
-                       10,
-                       RED);
+                    gestor->frutas[i].posicion.y + 10,
+                    10,
+                    RED);
 
             DrawRectangleLinesEx(gestor->frutas[i].hitbox, 1, YELLOW);
             // Dibujar id (debug)

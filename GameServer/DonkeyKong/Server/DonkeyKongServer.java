@@ -1098,12 +1098,12 @@ public class DonkeyKongServer extends GameServer {
         int fid = Integer.parseInt(idStr);
         GameRoom room = server.getRoomById(roomId);
         if (room != null) {
-            // ✅ CORREGIDO: Solo llamar a deleteFruit una vez
+            // CORREGIDO: Solo llamar a deleteFruit una vez, nota para documentación: pasaba en ambas partidas
             int[] info = room.deleteFruit(fid);
             
             if (info != null) {
-                int vine = info[0];
-                int height = info[1];
+                //int vine = info[0];
+                //int height = info[1];
                 int points = info[2];
                 
                 String msg = MessageProtocol.encode("FRUIT_DELETED", 
@@ -1130,13 +1130,12 @@ public class DonkeyKongServer extends GameServer {
                 System.out.println("[SERVER] ERROR: Sala " + roomId + " no existe");
                 continue;
             }
-            
-            // ✅ CORREGIDO: Solo llamar a deleteFruit
+
             int[] info = room.deleteFruit(fid);
             
             if (info != null) {
-                int vine = info[0];
-                int height = info[1];
+                //int vine = info[0];
+                //int height = info[1];
                 int points = info[2];
                 
                 String msg = MessageProtocol.encode("FRUIT_DELETED", 

@@ -20,7 +20,7 @@
 GestorEnemigos gestorEnemigos;
 GestorFrutas gestorFrutas;
 
-// ✅ NUEVO: Variables para espectador
+// Variables para espectador, caracteristicas importantes.
 static int watchedPlayerId = 1;      // Por defecto observa al jugador 1
 static bool showAllPlayers = false;  // false = solo uno, true = todos
 static int targetRoomId = 1;         // Sala que estamos observando (para espectadores)
@@ -74,7 +74,7 @@ static bool EsParaMiSala(const char* mensaje, int miSalaId, int miJugadorId, boo
     }
     
     // Para frutas y enemigos, todos los mensajes deberían ser filtrados por el servidor
-    // pero por si acaso, agregar lógica aquí
+    //Aquí estuvo la lógica anteriormente.
     
     return true;
 }
@@ -282,7 +282,7 @@ int main(int argc, char** argv) {
     float tiempoInvencibilidad = 0.0f;
     const float DURACION_INVENCIBILIDAD = 2.0f; // 2 segundos de invencibilidad
     
-    // Optimización: enviar POS solo cada 100ms (10 veces por segundo, no 60)
+    // Optimización: enviar POS solo cada 100ms, solo 10 veces por segundo, no 60 veces, aquí hubo mala optización
     Vector2 lastSentPos = {50, 100};
     float timeSinceLastPosSent = 0.0f;
     const float POS_SEND_INTERVAL = 0.1f; // 100ms
@@ -302,7 +302,7 @@ int main(int argc, char** argv) {
         if (bytes < (int)sizeof(buffer_recepcion)) buffer_recepcion[bytes] = '\0';
         else buffer_recepcion[sizeof(buffer_recepcion)-1] = '\0';
 
-        // printf("[Socket] Recibido: %s\n", buffer_recepcion); // Comentado para reducir lag
+        //Alexs revisá esto: Debug en caso de error de server_ printf("[Socket] Recibido: %s\n", buffer_recepcion;
 
         if (!EsParaMiSala(buffer_recepcion, targetRoomId, playerId, observerMode)) {
             // printf("[DEBUG] Mensaje ignorado (no es para sala %d): %s\n", targetRoomId, buffer_recepcion); // Comentado
@@ -715,7 +715,7 @@ int main(int argc, char** argv) {
             cuadradoPos.y += velocidadY;
         }
         
-        // Envío de posición (OPTIMIZADO: solo cada 100ms o si cambio es significativo)
+        // Envío de posición, intervalo de timepo pasado solo a 10 segundos.
         if (!observerMode && conectado && esta_conectado() && playerId > 0) {
             timeSinceLastPosSent += GetFrameTime();
             
@@ -724,7 +724,7 @@ int main(int argc, char** argv) {
             float dy = cuadradoPos.y - lastSentPos.y;
             float distance = sqrt(dx*dx + dy*dy);
             
-            // Enviar si: pasó intervalo de tiempo O cambio es significativo
+            //actualizar el estado solo si ha pasado un tiempo significativo.
             if (timeSinceLastPosSent >= POS_SEND_INTERVAL || distance >= POS_CHANGE_THRESHOLD) {
                 char posMsg[100];
                 snprintf(posMsg, sizeof(posMsg), "POS|%d|%.1f|%.1f", playerId, cuadradoPos.x, cuadradoPos.y);
@@ -789,7 +789,7 @@ int main(int argc, char** argv) {
 
             // ========== DIBUJAR JUGADORES ==========
             if (observerMode) {
-                // ✅ MODO ESPECTADOR
+                // -----MODO ESPECTADOR-----
                 
                 if (showAllPlayers) {
                     // Mostrar TODOS los jugadores de NUESTRA SALA
@@ -798,16 +798,16 @@ int main(int argc, char** argv) {
                         if (remotePlayers[i].roomId != targetRoomId) continue; // Solo de nuestra sala
                         
                         Color playerColor = (remotePlayers[i].id == 1) ? BLUE : 
-                                           (remotePlayers[i].id == 2) ? RED : GREEN;
+                                        (remotePlayers[i].id == 2) ? RED : GREEN;
                         
                         DrawRectangle(remotePlayers[i].pos.x, remotePlayers[i].pos.y, 
-                                     cuadradoSize, cuadradoSize, playerColor);
+                                    cuadradoSize, cuadradoSize, playerColor);
                         DrawRectangleLines(remotePlayers[i].pos.x, remotePlayers[i].pos.y, 
-                                          cuadradoSize, cuadradoSize, WHITE);
+                                        cuadradoSize, cuadradoSize, WHITE);
                         
                         const char* label = remotePlayers[i].nombre[0] ? 
-                                           remotePlayers[i].nombre :
-                                           TextFormat("P%d", remotePlayers[i].id);
+                                        remotePlayers[i].nombre :
+                                        TextFormat("P%d", remotePlayers[i].id);
                         DrawText(label, remotePlayers[i].pos.x, remotePlayers[i].pos.y - 16, 
                                 10, YELLOW);
                     }
@@ -822,7 +822,7 @@ int main(int argc, char** argv) {
                         remotePlayers[targetIdx].roomId == targetRoomId) {
                         
                         Color playerColor = (watchedPlayerId == 1) ? BLUE : 
-                                           (watchedPlayerId == 2) ? RED : GREEN;
+                                        (watchedPlayerId == 2) ? RED : GREEN;
                         
                         float px = remotePlayers[targetIdx].pos.x;
                         float py = remotePlayers[targetIdx].pos.y;
@@ -831,8 +831,8 @@ int main(int argc, char** argv) {
                         DrawRectangleLines(px, py, cuadradoSize, cuadradoSize, WHITE);
                         
                         const char* label = remotePlayers[targetIdx].nombre[0] ? 
-                                           remotePlayers[targetIdx].nombre : 
-                                           TextFormat("P%d", watchedPlayerId);
+                                        remotePlayers[targetIdx].nombre : 
+                                        TextFormat("P%d", watchedPlayerId);
                         DrawText(label, px, py - 16, 10, YELLOW);
                         
                         DrawText(TextFormat("OBSERVANDO: Jugador %d (Sala %d)", 
@@ -847,7 +847,7 @@ int main(int argc, char** argv) {
                 }
             
             } else {
-                // ✅ MODO JUGADOR
+                // ------MODO JUGADOR------------
                 
                 // Dibujar jugador LOCAL
                 Color colorCuadrado = BLUE;
@@ -879,16 +879,16 @@ int main(int argc, char** argv) {
                     if (remotePlayers[i].roomId != targetRoomId) continue; // Solo de nuestra sala
                     
                     Color remoteColor = (remotePlayers[i].id == 1) ? DARKBLUE : 
-                                       (remotePlayers[i].id == 2) ? DARKPURPLE : DARKGREEN;
+                                    (remotePlayers[i].id == 2) ? DARKPURPLE : DARKGREEN;
                     
                     DrawRectangle(remotePlayers[i].pos.x, remotePlayers[i].pos.y, 
-                                 cuadradoSize, cuadradoSize, remoteColor);
+                                cuadradoSize, cuadradoSize, remoteColor);
                     DrawRectangleLines(remotePlayers[i].pos.x, remotePlayers[i].pos.y, 
-                                      cuadradoSize, cuadradoSize, ORANGE);
+                                    cuadradoSize, cuadradoSize, ORANGE);
                     
                     const char* label = remotePlayers[i].nombre[0] ? 
-                                       remotePlayers[i].nombre : 
-                                       TextFormat("P%d", remotePlayers[i].id);
+                                    remotePlayers[i].nombre : 
+                                    TextFormat("P%d", remotePlayers[i].id);
                     DrawText(label, remotePlayers[i].pos.x, remotePlayers[i].pos.y - 16, 
                             10, ORANGE);
                 }

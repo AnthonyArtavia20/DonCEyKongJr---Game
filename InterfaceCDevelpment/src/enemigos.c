@@ -44,7 +44,7 @@ void InicializarEnemigos(GestorEnemigos* gestor, Mapa* mapa) {
     IdentificarLianasEnMapa(gestor);
     
     printf("[Enemigos] Gestor inicializado. Enemigos: %d, Lianas: %d, Proximo ID: %d, Nivel: %d\n", 
-           gestor->cantidad_enemigos, gestor->cantidad_lianas, gestor->proximo_id, gestor->nivel_actual);
+        gestor->cantidad_enemigos, gestor->cantidad_lianas, gestor->proximo_id, gestor->nivel_actual);
 }
 
 // ===== SISTEMA DE TEXTURAS =====
@@ -58,7 +58,7 @@ void CargarTexturasEnemigos(GestorEnemigos* gestor) {
         gestor->tex_cocodrilo_azul = LoadTextureFromImage(img_azul);
         UnloadImage(img_azul);
         printf("[Enemigos] Textura cocodrilo_azul.png cargada: %dx%d\n", 
-               gestor->tex_cocodrilo_azul.width, gestor->tex_cocodrilo_azul.height);
+            gestor->tex_cocodrilo_azul.width, gestor->tex_cocodrilo_azul.height);
     } else {
         printf("[Enemigos] AVISO: assets/cocodrilo_azul.png no encontrado\n");
     }
@@ -69,7 +69,7 @@ void CargarTexturasEnemigos(GestorEnemigos* gestor) {
         gestor->tex_cocodrilo_rojo = LoadTextureFromImage(img_rojo);
         UnloadImage(img_rojo);
         printf("[Enemigos] Textura cocodrilo_rojo.png cargada: %dx%d\n", 
-               gestor->tex_cocodrilo_rojo.width, gestor->tex_cocodrilo_rojo.height);
+            gestor->tex_cocodrilo_rojo.width, gestor->tex_cocodrilo_rojo.height);
     } else {
         printf("[Enemigos] AVISO: assets/cocodrilo_rojo.png no encontrado\n");
     }
@@ -148,11 +148,11 @@ void DibujarEnemigos(GestorEnemigos* gestor) {
             
             // Dibujar el sprite
             DrawTexturePro(*textura, 
-                          (Rectangle){0, 0, (float)textura->width, (float)textura->height},
-                          destRect,
-                          (Vector2){0, 0},
-                          0.0f,
-                          WHITE);
+                        (Rectangle){0, 0, (float)textura->width, (float)textura->height},
+                        destRect,
+                        (Vector2){0, 0},
+                        0.0f,
+                        WHITE);
         } else {
             // Si no hay textura, dibujar cuadro de debug
             DrawRectangleRec(gestor->enemigos[i].hitbox, colorDebug);
@@ -214,7 +214,7 @@ int CrearEnemigoDesdeJava(GestorEnemigos* gestor, int tipoEnemigo, int lianaID) 
     // Crear el enemigo
     float startY = liana->tileY_inicio * gestor->mapa->tileSize;
     printf("[Java] Creando enemigo ID %d, tipo %d en liana %d - Pos: (%.0f, %.0f)\n", 
-           nuevoID, tipoEnemigo, lianaID, liana->x_pos, startY);
+        nuevoID, tipoEnemigo, lianaID, liana->x_pos, startY);
     
     if (CrearEnemigo(gestor, nuevoID, tipo, liana->x_pos - 15, startY)) {
         int idx = BuscarIndiceEnemigo(gestor, nuevoID);
@@ -285,7 +285,7 @@ int CrearEnemigoEnLiana(GestorEnemigos* gestor, int id, TipoEnemigo tipo, int li
     float startY = liana->tileY_inicio * gestor->mapa->tileSize;
     
     printf("[Enemigos] Creando enemigo en liana %d - Pos: (%.0f, %.0f)\n", 
-           lianaID, liana->x_pos, startY);
+        lianaID, liana->x_pos, startY);
     
     if (CrearEnemigo(gestor, id, tipo, liana->x_pos - 15, startY)) {
         int idx = BuscarIndiceEnemigo(gestor, id);
@@ -368,7 +368,7 @@ void ActualizarCocodriloAzul(Enemigo* enemigo, GestorEnemigos* gestor, float del
                 enemigo->lianaActual = lianaID;
                 enemigo->velocidad = (Vector2){0, velocidadActual}; // USAR VELOCIDAD CALCULADA
                 printf("[CocodriloAzul] ID %d se posicionó en liana %d - Velocidad: %.2f (Nivel %d)\n", 
-                       enemigo->id, lianaID, velocidadActual, gestor->nivel_actual);
+                    enemigo->id, lianaID, velocidadActual, gestor->nivel_actual);
             }
         } else {
             enemigo->tiempoEspera += deltaTime;
@@ -582,7 +582,7 @@ void CambiarNivelEnemigos(GestorEnemigos* gestor, int nuevoNivel) {
             }
             
             printf("[Enemigos] Enemigo ID %d - Nueva velocidad: %.2f\n", 
-                   gestor->enemigos[i].id, velocidadActual);
+                gestor->enemigos[i].id, velocidadActual);
         }
     }
 }
@@ -617,8 +617,8 @@ void IdentificarLianasEnMapa(GestorEnemigos* gestor) {
                     gestor->lianas[gestor->cantidad_lianas].x_pos = x * gestor->mapa->tileSize;
                     
                     printf("Liana %d: Tile(%d,%d)-(%d,%d) -> PosX: %.0f\n", 
-                           lianaID, x, y_inicio, x, y_fin, 
-                           gestor->lianas[gestor->cantidad_lianas].x_pos);
+                        lianaID, x, y_inicio, x, y_fin, 
+                        gestor->lianas[gestor->cantidad_lianas].x_pos);
                     
                     gestor->cantidad_lianas++;
                     lianaID++;
@@ -636,8 +636,8 @@ void IdentificarLianasEnMapa(GestorEnemigos* gestor) {
             gestor->lianas[gestor->cantidad_lianas].x_pos = x * gestor->mapa->tileSize;
             
             printf("Liana %d: Tile(%d,%d)-(%d,%d) -> PosX: %.0f\n", 
-                   lianaID, x, y_inicio, x, y_fin, 
-                   gestor->lianas[gestor->cantidad_lianas].x_pos);
+                lianaID, x, y_inicio, x, y_fin, 
+                gestor->lianas[gestor->cantidad_lianas].x_pos);
             
             gestor->cantidad_lianas++;
             lianaID++;
@@ -651,11 +651,11 @@ void DebugLianas(GestorEnemigos* gestor) {
     printf("=== DEBUG LIANAS ===\n");
     for (int i = 0; i < gestor->cantidad_lianas; i++) {
         printf("Liana %d: X=%d, Y=%d-%d, PosX=%.0f\n",
-               gestor->lianas[i].id,
-               gestor->lianas[i].tileX,
-               gestor->lianas[i].tileY_inicio,
-               gestor->lianas[i].tileY_fin,
-               gestor->lianas[i].x_pos);
+            gestor->lianas[i].id,
+            gestor->lianas[i].tileX,
+            gestor->lianas[i].tileY_inicio,
+            gestor->lianas[i].tileY_fin,
+            gestor->lianas[i].x_pos);
     }
 }
 
